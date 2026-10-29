@@ -58,6 +58,8 @@ let Q = LS.get('queue', []);
 
 // ===================================================================== tiện ích
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Only link to Google Docs/Drive over https; anything else (javascript:, other hosts) is dropped.
+const safeUrl = u => { try { const x = new URL(u); return x.protocol === 'https:' && /^(docs|drive)\.google\.com$/.test(x.hostname) ? x.href : ''; } catch (e) { return ''; } };
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
 const loKey = s => String(s || '').toUpperCase().replace(/\s+/g, '').replace(/^[.\-_#:]+|[.\-_#:]+$/g, '');
 const hocKey = s => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
@@ -708,8 +710,8 @@ async function loadToi() {
     const r = await api('cuaToi', { n: 40 });
     if (!r.ok) throw new Error(r.error);
     S.toiLines = {}; r.lines.forEach(l => S.toiLines[l.id] = l);
-    html += r.lines.map(l => `<div class="item"><div class="h"><span>${esc(l.ten)}</span><span class="st ${l.st}">${ST_TEN[l.st] || l.st}</span></div>
-      <div class="s">${esc(l.id)} · ${esc(l.tg)} · Kho ${KHO_TEN[l.kho] || l.kho} · ${esc(l.hoc)} · lô ${esc(l.lo)} · ${esc(l.hsd)} · <b>${fmtN(l.sl)} ${esc(l.dvt)}</b> · ${esc(TT_TEN[l.tt] || l.tt)}</div>
+    html += r.lines.map(l => `<div class="item"><div class="h"><span>${esc(l.ten)}</span><span class="st ${esc(l.st)}">${esc(ST_TEN[l.st] || l.st)}</span></div>
+      <div class="s">${esc(l.id)} · ${esc(l.tg)} · Kho ${esc(KHO_TEN[l.kho] || l.kho)} · ${esc(l.hoc)} · lô ${esc(l.lo)} · ${esc(l.hsd)} · <b>${fmtN(l.sl)} ${esc(l.dvt)}</b> · ${esc(TT_TEN[l.tt] || l.tt)}</div>
       ${l.cb ? `<div class="s flex gap-1.5 text-amber-700">${ico('alert')}<span>${esc(l.cb)}</span></div>` : ''}
       ${(l.st === 'HIEU_LUC' || l.st === 'CHO_DUYET') ? `<div class="b">${l.st === 'HIEU_LUC' && l.tt === 'CONG_THEM' && !/^MOI-/.test(l.ma) ? `<button class="btn small" data-edit="${esc(l.id)}">${ico('rotate')}Sửa</button>` : ''}<button class="btn small danger" data-undo="${esc(l.id)}">${ico('undo')}Hoàn tác</button></div>` : ''}</div>`).join('');
     $('toiList').innerHTML = html || '<p class="muted">Chưa có dòng nào.</p>';
@@ -820,7 +822,7 @@ async function loadQl() {
       const dongBs = r.dong.filter(l => !/^MOI-/.test(l.ma)), n = dongBs.length + r.thuocMoi.length;
       $('qlBadge').textContent = n; $('qlBadge').classList.toggle('hidden', !n);
       $('qlDuyet').innerHTML = !n ? '' : `<details open><summary>${ico('clock', 'text-amber-600')} Chờ duyệt (${n})</summary><div class="inner">
-        ${r.thuocMoi.map(t => `<div class="qitem"><b>Thuốc mới ${esc(t.id)}:</b> ${esc(t.ten)} <span class="muted">· ${esc(t.dvt)} · kho ${KHO_TEN[t.kho] || t.kho} · ${esc(t.nguoi)} · ${esc(t.tg)}</span>
+        ${r.thuocMoi.map(t => `<div class="qitem"><b>Thuốc mới ${esc(t.id)}:</b> ${esc(t.ten)} <span class="muted">· ${esc(t.dvt)} · kho ${esc(KHO_TEN[t.kho] || t.kho)} · ${esc(t.nguoi)} · ${esc(t.tg)}</span>
           ${t.maDeXuat ? `<div class="small">Mã đề xuất: ${esc(t.maDeXuat)}</div>` : ''}
           ${isIT() ? `<div class="qa"><input data-ma-for="${esc(t.id)}" value="${esc(t.maDeXuat)}" placeholder="Mã iSOFH chính thức">
           <button class="btn small ok" data-tm="${esc(t.id)}" data-ok="1">Duyệt</button><button class="btn small danger" data-tm="${esc(t.id)}" data-ok="">Từ chối</button></div>` : ''}</div>`).join('')}
@@ -860,9 +862,9 @@ async function loadDots() {
         <span class="st ${d.st === 'MO' ? 'HIEU_LUC' : 'THAY_THE'}">${d.st === 'MO' ? 'Đang mở' : 'Đã đóng'}</span></div>
         <div class="small muted">Kho ${d.kho.map(k => KHO_TEN[k]).join(' + ')} · tạo ${esc(d.ngay)}${d.soVoi ? ' · so với ' + esc(d.soVoi) : ''}${d.ghi ? ' · ' + esc(d.ghi) : ''}</div>
         <div class="qa">${d.id === S.dot ? '<span class="small font-medium text-emerald-700">Đang dùng</span>' : `<button class="btn small" data-dotgo="${esc(d.id)}">${ico('swap')}Chuyển sang</button>`}
-          ${d.url ? `<a class="btn small" href="${esc(d.url)}" target="_blank" rel="noopener">${ico('file')}Mở file</a>` : ''}
+          ${safeUrl(d.url) ? `<a class="btn small" href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">${ico('file')}Mở file</a>` : ''}
           <button class="btn small ${d.st === 'MO' ? 'danger' : 'ok'}" data-dotst="${esc(d.id)}" data-st="${d.st === 'MO' ? 'DONG' : 'MO'}">${d.st === 'MO' ? ico('lock') + 'Đóng đợt' : ico('unlock') + 'Mở lại'}</button></div></div>`).join('')}
-      <div class="qa mt-2">${r.hubUrl ? `<a class="btn small" href="${esc(r.hubUrl)}" target="_blank" rel="noopener">${ico('file')}Mở file Trung tâm (PIN, danh mục, danh sách đợt)</a>` : ''}</div>
+      <div class="qa mt-2">${safeUrl(r.hubUrl) ? `<a class="btn small" href="${esc(safeUrl(r.hubUrl))}" target="_blank" rel="noopener">${ico('file')}Mở file Trung tâm (PIN, danh mục, danh sách đợt)</a>` : ''}</div>
       <button class="btn primary mt-2 w-full" data-dotnew="1">${ico('plus')}Tạo đợt mới</button></div></details>`;
   } catch (e) { box.innerHTML = `<p class="msg">${esc(e.message)}</p>`; }
 }
@@ -1217,8 +1219,6 @@ function bind() {
 (function start() {
   document.querySelectorAll('i[data-i]').forEach(el => { el.outerHTML = ico(el.dataset.i); });
   bind();
-  const p = new URLSearchParams(location.search);
-  if (p.get('api')) { LS.set('api', p.get('api')); history.replaceState(null, '', location.pathname); }
   Q.forEach(x => { if (x.state === 'sending') x.state = 'pending'; }); LS.set('queue', Q);
   if (!apiUrl()) $('apiBox').classList.remove('hidden');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
