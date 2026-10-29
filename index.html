@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Kiểm kho iSOFH</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css?v=4">
+</head>
+<body>
+
+<!-- ============ ĐĂNG NHẬP ============ -->
+<section id="login" class="screen">
+  <div class="login-box">
+    <div class="logo"><i data-i="package"></i></div>
+    <h1>Kiểm kho iSOFH</h1>
+    <p class="muted mt-1 text-sm" id="loginDot">Nhập mã PIN được IT cấp</p>
+    <div id="apiBox" class="field hidden mt-4">
+      <label for="apiUrl">Link API (Apps Script – IT dán 1 lần)</label>
+      <input id="apiUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+    </div>
+    <input id="pin" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="••••••" autocomplete="one-time-code" aria-label="Mã PIN">
+    <button id="btnLogin" class="btn primary big">Vào</button>
+    <p id="loginMsg" class="msg mt-3"></p>
+  </div>
+</section>
+
+<!-- ============ CHÍNH ============ -->
+<section id="main" class="screen hidden">
+  <header class="top">
+    <div class="row1">
+      <button id="btnKho" class="chip kho">Kho ?</button>
+      <button id="btnHoc" class="chip hoc">Hộc ?</button>
+      <span id="sync" class="sync" title="Hàng đợi gửi"></span>
+      <button id="btnMenu" class="icon" aria-label="Menu"><i data-i="menu"></i></button>
+    </div>
+    <div class="row2"><span id="who" class="who" role="button" title="Đổi đợt kiểm"></span><span id="prog"></span></div>
+    <div id="tapBanner" class="banner tap hidden"><b>CHẾ ĐỘ TẬP</b> – thoải mái bấm thử, số liệu <b>không</b> được tính vào kết quả kiểm kho.</div>
+    <div id="dongBanner" class="banner hidden">Đợt này <b>ĐÃ ĐÓNG</b> – chỉ xem, không nhập thêm được. Đổi đợt: bấm tên đợt ở trên.</div>
+    <div id="chotBanner" class="banner hidden">Kho đã <b>CHỐT</b> – mỗi lần lưu là <b>phiếu bổ sung</b>, cần ghi lý do, IT duyệt mới được cộng.</div>
+    <nav class="tabs">
+      <button data-tab="dem" class="on">Đếm</button>
+      <button data-tab="toi">Của tôi <span id="toiBadge" class="badge hidden"></span></button>
+      <button data-tab="moi">Thuốc mới</button>
+      <button data-tab="ql" id="tabQl" class="hidden">Quản lý <span id="qlBadge" class="badge hidden"></span></button>
+    </nav>
+  </header>
+
+  <!-- ---- TAB ĐẾM ---- -->
+  <div id="tab-dem" class="tab">
+    <div id="hocBar" class="hocbar"><span id="hocBarTxt" class="min-w-0 truncate"></span><button id="btnXongHoc" class="btn small"><i data-i="check"></i>Xong hộc này</button></div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Gõ tên hoặc mã thuốc…" autocomplete="off" autocapitalize="characters" aria-label="Tìm thuốc">
+      <button id="btnScanTop" class="btn scan" title="Quét mã 2D trên hộp" aria-label="Quét mã"><i data-i="scan"></i></button>
+    </div>
+    <div id="results" class="results"></div>
+
+    <div id="card" class="card hidden">
+      <div class="card-head">
+        <div class="min-w-0">
+          <div id="dName" class="dname"></div>
+          <div id="dMeta" class="muted small mt-0.5"></div>
+        </div>
+        <button id="btnClear" class="icon -mr-1 -mt-1" title="Bỏ chọn" aria-label="Bỏ chọn"><i data-i="x"></i></button>
+      </div>
+      <div id="dWarn" class="warn hidden"></div>
+
+      <div class="sec-title">Đã đếm trong đợt này <span id="dTotal" class="muted font-normal"></span></div>
+      <div id="lots" class="lots"></div>
+
+      <div id="lotForm">
+        <div class="grid2">
+          <div class="field">
+            <label for="lo">Số lô <a id="lotUnlock" class="link hidden ml-1">đổi</a></label>
+            <input id="lo" autocomplete="off" autocapitalize="characters" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="hsd">HSD <span class="muted font-normal">(bấm liền số)</span></label>
+            <input id="hsd" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+            <label class="tiny"><input type="checkbox" id="hsdMonth"><span>Vỏ chỉ ghi tháng/năm</span></label>
+          </div>
+        </div>
+        <label class="tiny -mt-1 mb-3"><input type="checkbox" id="khongLo"><span>Hàng <b class="text-zinc-700">không có lô/HSD</b> (gạc, que thử, dụng cụ…)</span></label>
+        <div class="scanrow">
+          <button id="btnScan2d" class="btn ghost"><i data-i="scan"></i>Quét mã 2D</button>
+          <button id="btnOcr" class="btn ghost"><i data-i="type"></i>Chụp Lô/HSD</button>
+        </div>
+      </div>
+
+      <div class="grid3" id="qtyBox">
+        <div class="field" id="fHop"><label id="lHop" for="hop">Số hộp nguyên</label><input id="hop" inputmode="decimal" autocomplete="off"></div>
+        <div class="field" id="fQc"><label id="lQc" for="qc">1 hộp có mấy</label><input id="qc" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label id="lLe" for="le">Số lẻ</label><input id="le" inputmode="decimal" autocomplete="off"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="dvt">ĐVT đếm</label><select id="dvt"></select></div>
+        <div class="total" id="total">0</div>
+      </div>
+      <div class="field" id="fLyDo"><label id="lLyDo" for="lyDo">Ghi chú</label><input id="lyDo" autocomplete="off" placeholder="(không bắt buộc)"></div>
+
+      <ul id="checks" class="checks"></ul>
+
+      <div id="actions" class="actions"></div>
+    </div>
+
+    <div id="hint" class="hint">
+      <b class="text-zinc-700">Cách đếm:</b> chọn <b>Hộc</b> ở trên → tìm thuốc (gõ tên hoặc bấm quét) → bấm vào <b>lô đã có</b> hoặc <b>+ Lô mới</b> → nhập số → Lưu.
+      Lưu xong cứ đếm tiếp, máy tự gửi kể cả khi mạng yếu.
+    </div>
+  </div>
+
+  <!-- ---- TAB CỦA TÔI ---- -->
+  <div id="tab-toi" class="tab hidden">
+    <div class="bar"><b>Dòng tôi vừa nhập</b><button id="btnToiReload" class="icon" aria-label="Tải lại"><i data-i="refresh"></i></button></div>
+    <div id="toiList" class="list"></div>
+  </div>
+
+  <!-- ---- TAB THUỐC MỚI ---- -->
+  <div id="tab-moi" class="tab hidden">
+    <div class="note">Thuốc có trong kho nhưng <b class="text-zinc-900">tìm không thấy</b> trong danh sách. Gửi lên để IT duyệt và gán mã iSOFH; số lượng được giữ lại.</div>
+    <div class="field"><label for="nTen">Tên thuốc + hàm lượng + quy cách *</label><input id="nTen" autocomplete="off" placeholder="VD: METOBRA 0,3% Lọ 5ml"></div>
+    <div class="grid2">
+      <div class="field"><label for="nMa">Mã iSOFH (nếu biết)</label><input id="nMa" autocomplete="off" autocapitalize="characters" placeholder="VD: KS-0127"></div>
+      <div class="field"><label for="nDvt">ĐVT nhỏ nhất *</label><select id="nDvt"></select></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label for="nLo">Số lô *</label><input id="nLo" autocomplete="off" autocapitalize="characters"></div>
+      <div class="field"><label for="nHsd">HSD *</label><input id="nHsd" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label for="nHop">Số hộp</label><input id="nHop" inputmode="decimal"></div>
+      <div class="field"><label for="nQc">1 hộp có mấy</label><input id="nQc" inputmode="decimal"></div>
+      <div class="field"><label for="nLe">Số lẻ</label><input id="nLe" inputmode="decimal"></div>
+    </div>
+    <div class="field"><label for="nGhi">Ghi chú</label><input id="nGhi" autocomplete="off"></div>
+    <button id="btnMoi" class="btn primary big">Gửi thuốc mới</button>
+    <p id="moiMsg" class="msg mt-3"></p>
+  </div>
+
+  <!-- ---- TAB QUẢN LÝ ---- -->
+  <div id="tab-ql" class="tab hidden">
+    <div class="bar"><b id="qlTitle">Quản lý</b><button id="btnQlReload" class="icon" aria-label="Tải lại"><i data-i="refresh"></i></button></div>
+    <div id="qlProg" class="qlprog"></div>
+    <div id="qlHoc"></div>
+    <div id="qlDuyet"></div>
+    <div id="qlCanXem"></div>
+    <div id="qlKho" class="qlkho"></div>
+    <div id="qlDot" class="mt-3"></div>
+  </div>
+</section>
+
+<!-- ============ QUÉT ============ -->
+<div id="scanOv" class="overlay hidden">
+  <video id="video" playsinline muted autoplay></video>
+  <div id="guide" class="guide"></div>
+  <div class="scan-top">
+    <div class="seg"><button id="mode2d" class="on">Mã 2D</button><button id="modeOcr">Chữ Lô/HSD</button></div>
+    <button id="btnScanClose" class="icon light" aria-label="Đóng"><i data-i="x"></i></button>
+  </div>
+  <div class="scan-bottom">
+    <div id="scanMsg" class="scanmsg">Đang mở camera…</div>
+    <div id="ocrResult" class="ocrres hidden"></div>
+    <div class="scan-btns">
+      <button id="btnShot" class="btn primary hidden h-11 border-white bg-white px-6 text-zinc-950"><i data-i="camera"></i>Chụp</button>
+      <button id="btnTorch" class="btn light hidden h-11" aria-label="Đèn"><i data-i="zap"></i></button>
+      <button id="btnPickImg" class="btn light h-11"><i data-i="image"></i>Chọn ảnh</button>
+    </div>
+  </div>
+  <input type="file" id="imgFile" accept="image/*" capture="environment" class="hidden">
+</div>
+
+<!-- ============ HỘP THOẠI ============ -->
+<div id="modal" class="overlay dim hidden">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <div id="mTitle" class="mtitle"></div>
+    <div id="mBody" class="mbody"></div>
+    <div id="mBtns" class="mbtns"></div>
+  </div>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script src="config.js?v=4"></script>
+<script src="ocrparse.js?v=4"></script>
+<script src="app.js?v=4"></script>
+</body>
+</html>

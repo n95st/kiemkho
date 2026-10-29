@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hướng dẫn kiểm kho iSOFH</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css?v=3">
+<style>
+  @page { size: A4; margin: 10mm; }
+  @media print { .noprint { display: none !important; } body { background: #fff !important; } .sheet { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; } }
+  .sheet { max-width: 190mm; }
+  .pingrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .pincard { border: 1px dashed #A1A1AA; padding: 10px 12px; break-inside: avoid; }
+  .qrbox svg { width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body class="bg-zinc-100">
+<div class="noprint sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-2">
+  <a href="./" class="btn small">← Về app</a>
+  <div class="flex gap-2"><a href="#" id="tabGuide" class="btn small">Hướng dẫn</a><a href="#pin" id="tabPin" class="btn small">Phiếu PIN (IT)</a>
+  <button onclick="window.print()" class="btn small primary">In</button></div>
+</div>
+
+<!-- ================== HƯỚNG DẪN 1 TRANG ================== -->
+<main id="guide" class="sheet mx-auto my-4 rounded-xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-sm">
+  <div class="flex items-start justify-between gap-6 border-b border-zinc-200 pb-4">
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-widest text-zinc-500">Kiểm kho iSOFH</div>
+      <h1 class="mt-1 text-2xl font-bold tracking-tight">Hướng dẫn nhanh cho người đếm</h1>
+      <p class="mt-2 text-sm text-zinc-600">Quét mã QR bằng camera điện thoại → mở trang → bấm <b>Chia sẻ / ⋮ → Thêm vào màn hình chính</b> để dùng như app.</p>
+      <p class="mt-2 break-all font-mono text-xs text-zinc-500" id="appUrl"></p>
+    </div>
+    <div class="w-36 shrink-0 text-center"><div id="qr" class="qrbox"></div><div class="mt-1 text-[11px] text-zinc-500">Quét để mở app</div></div>
+  </div>
+
+  <ol class="mt-5 space-y-3 text-[15px] leading-snug">
+    <li class="flex gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">1</span>
+      <div><b>Đăng nhập bằng mã PIN</b> của mình (mỗi người 1 PIN – không dùng chung). Nếu máy hỏi, <b>chọn đúng đợt kiểm</b> IT thông báo – tên đợt hiện ở dòng nhỏ dưới nút Kho.</div></li>
+    <li class="flex gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">2</span>
+      <div><b>Chọn Kho</b> (chẵn / lẻ) rồi <b>chọn Hộc</b> – ưu tiên hộc trong mục <i>“Chưa ai nhận”</i>. Ô hộc màu vàng ở trên cùng là hộc đang đếm.</div></li>
+    <li class="flex gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">3</span>
+      <div><b>Tìm thuốc</b>: gõ vài chữ tên hoặc mã (không cần dấu), hoặc bấm nút <b>quét</b> và đưa mã vạch / mã vuông trên hộp vào khung.</div></li>
+    <li class="flex gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">4</span>
+      <div><b>Chọn lô</b>: bấm vào <b>lô đã có</b> (tự điền lô + HSD) hoặc <b>+ Lô mới</b> rồi nhập Số lô, HSD (bấm liền số, máy tự thêm “/”).
+        Nhập <b>số hộp chưa bóc</b> + <b>số lẻ</b>. Hàng không có lô (gạc, que thử…) → tick <b>“không có lô/HSD”</b>.</div></li>
+    <li class="flex gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">5</span>
+      <div><b>Bấm Lưu</b> → đếm tiếp thuốc khác. Đếm hết hộc → bấm <b>“Xong hộc này”</b> → chọn hộc tiếp theo.</div></li>
+  </ol>
+
+  <h2 class="mt-6 text-sm font-semibold uppercase tracking-wider text-zinc-500">3 nút lưu – chọn đúng nút</h2>
+  <div class="mt-2 grid grid-cols-3 gap-3 text-[13px] leading-snug">
+    <div class="rounded-lg border border-zinc-900 bg-zinc-900 p-3 text-white"><b class="text-[15px]">+ Cộng thêm</b><div class="mt-1 text-zinc-300">Mặc định. Hàng <b>mới tìm thấy</b> (chỗ khác, thùng khác) → cộng vào số đã có.</div></div>
+    <div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900"><b class="text-[15px]">↻ Đếm lại hộc</b><div class="mt-1">Đếm lại <b>đúng hộc mình đã đếm</b> → <b>thay</b> số cũ của hộc đó.</div></div>
+    <div class="rounded-lg border border-violet-300 bg-violet-50 p-3 text-violet-900"><b class="text-[15px]">⇲ Dồn cả lô</b><div class="mt-1">Chỉ <b>tổ trưởng</b>: gom cả lô về 1 chỗ, đếm lại, thay mọi số cũ của lô.</div></div>
+  </div>
+
+  <h2 class="mt-6 text-sm font-semibold uppercase tracking-wider text-zinc-500">Lưu ý</h2>
+  <ul class="mt-2 list-disc space-y-1.5 pl-5 text-[14px] leading-snug">
+    <li><b>Nhập sai?</b> Tab <b>Của tôi</b> → <b>Sửa</b> (điền lại số cũ để sửa) hoặc <b>Hoàn tác</b>.</li>
+    <li><b>Ô vàng ⚠</b> = máy nghi sai (quy cách lạ, HSD gần hết, thuốc của kho kia…) → <b>đọc lại vỏ hộp</b> trước khi lưu.</li>
+    <li><b>Máy hỏi “hộc này đã có người đếm”</b> → hàng khác thì <i>Cộng thêm</i>; nếu đúng là hàng người kia đã đếm thì <b>Huỷ</b>.</li>
+    <li><b>Mất mạng vẫn lưu được</b>: biểu tượng đồng hồ = chờ gửi, dấu ✓ xanh = đã gửi hết. Không đăng xuất khi còn dòng chờ gửi.</li>
+    <li><b>Không tìm thấy thuốc</b> → bấm <i>“Không thấy? Báo thuốc chưa có trong danh mục”</i>, ghi tên + lô + số lượng.</li>
+    <li><b>Chụp chữ Lô/HSD</b>: đưa dòng <i>Batch/Lot/Số lô · EXP/HSD</i> vào khung vàng, chụp, kiểm tra kết quả rồi bấm Dùng.</li>
+  </ul>
+  <p class="mt-6 border-t border-zinc-200 pt-3 text-xs text-zinc-500">Cần hỗ trợ: liên hệ IT. Tài khoản <b>Tập</b> dùng để làm quen – số liệu không được tính.</p>
+</main>
+
+<!-- ================== PHIẾU PIN (IT) ================== -->
+<main id="pins" class="sheet mx-auto my-4 hidden rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+  <div class="noprint mb-4 text-sm text-zinc-600" id="pinMsg">Đang tải danh sách tài khoản…</div>
+  <div id="pinGrid" class="pingrid"></div>
+</main>
+
+<script src="config.js?v=3"></script>
+<script src="vendor/qrcode/qrcode.js"></script>
+<script>
+const appUrl = new URL('./', location.href).href;
+function qrSvg(text, cell) { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: cell || 4, margin: 2, scalable: true }); }
+document.getElementById('appUrl').textContent = appUrl;
+document.getElementById('qr').innerHTML = qrSvg(appUrl, 4);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const get = k => { try { return JSON.parse(localStorage.getItem('kk_' + k)); } catch (e) { return null; } };
+async function loadPins() {
+  const msg = document.getElementById('pinMsg');
+  const api = (window.KK_CONFIG && KK_CONFIG.API_URL) || get('api'), pin = get('pin');
+  if (!api || !pin) { msg.textContent = 'Đăng nhập app bằng tài khoản IT trên máy này trước, rồi mở lại trang này.'; return; }
+  try {
+    const r = await (await fetch(api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'dsTaiKhoan', pin: pin }) })).json();
+    if (!r.ok) throw new Error(r.error);
+    const qr = qrSvg(appUrl, 3);
+    document.getElementById('pinGrid').innerHTML = r.list.filter(u => u.active).map(u => `<div class="pincard">
+      <div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="text-[11px] uppercase tracking-wider text-zinc-500">${esc(u.tk)} · ${esc(u.roleTen)}</div>
+      <div class="truncate text-[15px] font-semibold">${esc(u.ten)}</div>
+      <div class="mt-1 font-mono text-2xl font-bold tracking-[.2em]">${esc(u.pin)}</div></div>
+      <div class="qrbox w-16 shrink-0">${qr}</div></div>
+      <div class="mt-1 text-[10.5px] leading-tight text-zinc-500">Quét QR mở app · nhập PIN · không đưa PIN cho người khác</div></div>`).join('');
+    msg.textContent = r.list.length + ' tài khoản – cắt theo đường kẻ, phát cho từng người.';
+  } catch (e) { msg.textContent = 'Không tải được: ' + e.message; }
+}
+function route() {
+  const pinMode = location.hash === '#pin';
+  document.getElementById('guide').classList.toggle('hidden', pinMode);
+  document.getElementById('pins').classList.toggle('hidden', !pinMode);
+  if (pinMode) loadPins();
+}
+window.addEventListener('hashchange', route); route();
+</script>
+</body>
+</html>
