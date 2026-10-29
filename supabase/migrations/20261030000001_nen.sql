@@ -172,7 +172,9 @@ create function kk.xac_thuc(pin text, ip text) returns kk.tai_khoan
 language plpgsql stable security definer set search_path = kk, extensions, pg_temp as $$
 declare u kk.tai_khoan;
 begin
-  if exists (select 1 from kk.pin_sai p where p.khoa = ip and p.so_lan >= 20 and p.het_han > now()) then
+  -- per-IP limit 20, plus a global cap of 300 failures so rotating IPs cannot brute-force PINs
+  if exists (select 1 from kk.pin_sai p where p.khoa = ip and p.so_lan >= 20 and p.het_han > now())
+     or (select coalesce(sum(p.so_lan), 0) from kk.pin_sai p where p.het_han > now()) >= 300 then
     raise exception 'Tạm khoá đăng nhập 10 phút vì nhập sai PIN quá nhiều lần';
   end if;
   select * into u from kk.tai_khoan t where t.pin = trim(coalesce(xac_thuc.pin, ''));
@@ -251,23 +253,27 @@ end $$;
 create function public.api(req jsonb) returns jsonb
 language plpgsql security definer set search_path = kk, extensions, pg_temp as $$
 declare
-  hdr text; ip text; act text; u kk.tai_khoan; d kk.dot; r jsonb;
+  hdr text; xff text[]; ip text; act text; u kk.tai_khoan; d kk.dot; r jsonb;
   -- actions that need no đợt (lower-case: kk.a_<name> functions are folded to lower case)
   hub text[] := '{login,danhmuc,dstaikhoan,dsdot,taodot,dattrangthaidot,luutaikhoan,datlaipin,luuthuoc,nhapthuoc,luukho,luucauhinh}';
   wr text[] := '{luu,hoantac,thuocmoi,nhanhoc,xonghoc,duyetdong,duyetthuocmoi,goplo,dattrangthaikho,luuhoc,nhapsosanh}';
 begin
+  -- Client IP: cf-connecting-ip, else the RIGHT-most x-forwarded-for entry (the left ones are client-supplied).
   hdr := nullif(current_setting('request.headers', true), '');
-  ip := coalesce(nullif(trim(split_part(coalesce(hdr::json->>'x-forwarded-for', ''), ',', 1)), ''), 'unknown');
+  xff := string_to_array(coalesce(hdr::json->>'x-forwarded-for', ''), ',');
+  ip := left(coalesce(nullif(trim(hdr::json->>'cf-connecting-ip'), ''),
+                      nullif(trim(xff[array_length(xff, 1)]), ''), 'unknown'), 64);
 
   u := kk.xac_thuc(req->>'pin', ip);
-  if u.tk is null then
+  if u.tk is null or not u.hoat_dong then
+    delete from kk.pin_sai where het_han < now();
     insert into kk.pin_sai as p (khoa, so_lan, het_han) values (ip, 1, now() + interval '10 minutes')
     on conflict (khoa) do update
       set so_lan = case when p.het_han > now() then p.so_lan + 1 else 1 end,
           het_han = now() + interval '10 minutes';
-    return jsonb_build_object('ok', false, 'error', 'Sai mã PIN');
-  end if;
-  if not u.hoat_dong then
+    if u.tk is null then
+      return jsonb_build_object('ok', false, 'error', 'Sai mã PIN');
+    end if;
     return jsonb_build_object('ok', false, 'error', 'Tài khoản ' || u.ten || ' đang bị khoá – báo IT');
   end if;
 
