@@ -65,11 +65,28 @@ declare
 begin
   kho := kk.kiem_kho(d, req->>'kho');
   v_ma := btrim(coalesce(req->>'ma', ''));
+  -- offline resend of a line already saved: answer from that line even if the drug code changed since
+  -- (IT approved the MOI-Mnnn proposal, so the line now carries the official code)
+  v_req := nullif(req->>'reqId', '');
+  if v_req is not null then
+    select * into ex from kk.dong x where x.dot_id = d.id and x.req_id = v_req;
+    if found then
+      if ex.tk = u.tk and ex.kho = kho and (ex.ma = v_ma or exists (
+           select 1 from kk.thuoc_moi m where m.dot_id = d.id and 'MOI-M' || lpad(m.so::text, 3, '0') = v_ma
+              and m.trang_thai = 'DA_DUYET' and m.ma_chinh_thuc = ex.ma)) then
+        return jsonb_build_object('id', 'D' || lpad(ex.so::text, 5, '0'), 'st', ex.trang_thai, 'trungLap', true,
+                                  'lines', kk.dong_cua(d.id, v_tap, ex.kho, ex.ma));
+      end if;
+      raise exception 'Mã yêu cầu bị trùng – tải lại trang rồi lưu lại';
+    end if;
+  end if;
   select * into t from kk.thuoc x where x.ma = v_ma;
   if not found then
-    -- new drug still waiting for IT: temporary code MOI-Mnnn
+    -- new drug still waiting for IT: temporary code MOI-Mnnn.
+    -- "for share" meets the row lock a_duyetthuocmoi takes, so a count is never saved against a proposal being approved
+    -- (after the approval commits the CHO_DUYET condition fails and the code is unknown). Lock order: proposal row, then khoa_lo.
     select * into tm from kk.thuoc_moi x
-     where x.dot_id = d.id and 'MOI-M' || lpad(x.so::text, 3, '0') = v_ma and x.trang_thai = 'CHO_DUYET';
+     where x.dot_id = d.id and 'MOI-M' || lpad(x.so::text, 3, '0') = v_ma and x.trang_thai = 'CHO_DUYET' for share;
     if not found then raise exception 'Mã % không có trong danh mục', v_ma; end if;
   end if;
   perform kk.khoa_lo(d.id, kho, v_ma);
@@ -99,7 +116,6 @@ begin
   if dvt = '' then raise exception 'Chưa chọn ĐVT'; end if;
 
   -- offline queue resends the same reqId after the server already saved it
-  v_req := nullif(req->>'reqId', '');
   if v_req is not null then
     select * into ex from kk.dong x where x.dot_id = d.id and x.req_id = v_req;
     if found then

@@ -1,5 +1,5 @@
 begin;
-select plan(86);
+select plan(93);
 
 -- helpers: base request on DOT01 / CHAN / TT-0001 (TK04 by default), overrides merged on top
 create function pg_temp.api(act text, extra jsonb default '{}', pin text default '444444') returns jsonb language sql as $$
@@ -165,10 +165,27 @@ select results_eq($$select ma, ten, trang_thai, cap_nhat like '__/__ __:__ duy�
   $$values ('TT-0100', 'Paracetamol  500 MG', 'HIEU_LUC', true), ('TT-0100', 'Paracetamol  500 MG', 'HIEU_LUC', true)$$, 'duyet_thuoc_moi_doi_ma_dong');
 select results_eq($$select trang_thai, ma_chinh_thuc from kk.thuoc_moi where so = 1$$, $$values ('DA_DUYET', 'TT-0100')$$, 'duyet_thuoc_moi_de_xuat_da_duyet');
 select is(pg_temp.api('duyetthuocmoi', '{"id":"M001","chapNhan":true,"ma":"tt-0100"}', '111111')->>'error', 'Không thấy đề xuất M001 đang chờ', 'duyet_thuoc_moi_hai_lan');
+-- offline resend of a MOI count after IT approved the proposal: trungLap, no new row
+create temp table r_moi_gui as
+  select pg_temp.luu('{"ma":"MOI-M002","dvt":"Viên","hoc":"m 5","le":1,"lo":"m5","hsd":"15/03/2027","reqId":"r-moi"}') as j;
+select is((select j->>'st' from r_moi_gui), 'CHO_DUYET', 'gui_lai_moi_luu_lan_dau_cho_duyet');
+create temp table n_dong as select count(*)::int n from kk.dong;
 -- accept onto a code that already exists: no new catalogue row, name comes from the catalogue
 select is(pg_temp.api('duyetthuocmoi', '{"id":"M002","chapNhan":true,"ma":"tt-0009"}', '111111')->>'ma', 'TT-0009', 'duyet_thuoc_moi_ma_co_san');
 select results_eq($$select (select count(*)::int from kk.thuoc where nguon = 'MOI M002'), (select ten from kk.dong where lo = 'M3')$$,
   $$select 0, 'Vitamin C'::text$$, 'duyet_thuoc_moi_ma_co_san_ten_danh_muc');
+create temp table r_moi_lai as
+  select pg_temp.luu('{"ma":"MOI-M002","dvt":"Viên","hoc":"m 5","le":1,"lo":"m5","hsd":"15/03/2027","reqId":"r-moi"}') as j;
+select is((select j->>'trungLap' from r_moi_lai), 'true', 'gui_lai_moi_sau_duyet_trung_lap');
+select results_eq($$select j->>'id', j->>'st' from r_moi_lai$$,
+  $$select j->>'id', 'HIEU_LUC'::text from r_moi_gui$$, 'gui_lai_moi_sau_duyet_dong_cu');
+select is((select count(*)::int from jsonb_array_elements((select j->'lines' from r_moi_lai)) x where x->>'ma' = 'TT-0009' and x->>'lo' = 'M5'), 1,
+  'gui_lai_moi_sau_duyet_lines');
+select is((select count(*)::int from kk.dong), (select n from n_dong), 'gui_lai_moi_sau_duyet_khong_them_dong');
+select is(pg_temp.luu('{"ma":"MOI-M002","dvt":"Viên","hoc":"m 5","le":1,"lo":"m5","hsd":"15/03/2027","reqId":"r-moi"}', '555555')->>'error',
+  'Mã yêu cầu bị trùng – tải lại trang rồi lưu lại', 'gui_lai_moi_nguoi_khac_bi_chan');
+select is(pg_temp.luu('{"ma":"MOI-M002","dvt":"Viên","hoc":"m 6","le":1,"lo":"m6","hsd":"15/03/2027"}')->>'error',
+  'Mã MOI-M002 không có trong danh mục', 'luu_moi_sau_duyet_khong_con_ma_tam');
 -- reject
 select pg_temp.api('thuocmoi', '{"ten":"Thuốc bị từ chối 5mg","dvt":"Viên","hoc":"r 1","le":1,"lo":"r1","hsd":"15/03/2027"}');
 select is((select so_thuoc_moi from kk.dot where id = 'DOT01'), 3, 'duyet_thuoc_moi_so_tiep_theo');
