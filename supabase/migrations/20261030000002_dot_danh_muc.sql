@@ -56,11 +56,12 @@ begin
    where k.ma in (select upper(x) from jsonb_array_elements_text(
            case jsonb_typeof(req->'kho') when 'array' then req->'kho' when 'string' then jsonb_build_array(req->'kho') else '[]'::jsonb end) x);
   if cardinality(khos) = 0 then raise exception 'Chọn ít nhất 1 kho'; end if;
+  -- lock before the duplicate-name check so concurrent calls serialize (the check sees the other's row)
+  perform pg_advisory_xact_lock(hashtext('taoDot'));
   if exists (select 1 from kk.dot t where kk.norm_ten(t.ten) = kk.norm_ten(tn)) then
     raise exception 'Đã có đợt tên "%"', tn;
   end if;
 
-  perform pg_advisory_xact_lock(hashtext('taoDot'));
   if sv <> '' then
     select * into src from kk.dot t where t.id = sv;
     if not found then raise exception 'Không thấy đợt so sánh %', sv; end if;

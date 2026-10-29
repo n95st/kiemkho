@@ -1,5 +1,5 @@
 begin;
-select plan(33);
+select plan(35);
 
 -- taoDot validation
 select is((public.api('{"action":"taoDot","pin":"444444","ten":"Kiểm kho thử","kho":["CHAN"]}')->>'error'),
@@ -12,6 +12,10 @@ select is((public.api('{"action":"taoDot","pin":"111111","ten":"dot  THU!","kho"
   'Đã có đợt tên "dot  THU!"', 'tao_dot_trung_ten');
 select is((public.api('{"action":"taoDot","pin":"111111","ten":"Đợt mới","kho":["CHAN"],"soVoi":"DOT99"}')->>'error'),
   'Không thấy đợt so sánh DOT99', 'tao_dot_so_voi_la');
+select is((public.api('{"action":"taoDot","pin":"111111","ten":"Đợt A","kho":["CHAN"]}')->>'ok'), 'true', 'tao_dot_a');
+select is((public.api('{"action":"taoDot","pin":"111111","ten":"dot-a","kho":["CHAN"]}')->>'error'),
+  'Đã có đợt tên "dot-a"', 'tao_dot_trung_ten_chuan_hoa');
+delete from kk.nhat_ky where dot_id = 'DOT03'; delete from kk.dot_kho where dot_id = 'DOT03'; delete from kk.dot where id = 'DOT03';
 select is((select count(*)::int from kk.dot), 2, 'tao_dot_loi_khong_them_dot');
 
 -- source data in DOT01
