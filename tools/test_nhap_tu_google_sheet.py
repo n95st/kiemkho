@@ -10,6 +10,9 @@ import unittest
 
 import openpyxl
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import nhap_tu_google_sheet as nhap  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "tools", "nhap_tu_google_sheet.py")
 DB_URL = os.environ.get("DB_URL", "postgresql://postgres:postgres@127.0.0.1:54322/postgres")
@@ -51,6 +54,8 @@ def make_fixtures(d):
              "", "", "", 10, "Viên", "Pat O'Brien", "TK02", "DEM", "HIEU_LUC", "", "", "", "", "", ""],
             ["D00003", dt.datetime(2026, 10, 2, 9, 9), "CHAN", "TT-1", "Paracetamol", "LO1", "31/05/2027", "A  1",
              2, 100, 6, 206, "Viên", "Pat O'Brien", "TK02", "SUA", "HIEU_LUC", "", "", "", "r3", "", "D00001"],
+            ["D00004", dt.datetime(2026, 10, 2, 9, 10), "LE", "TT-2", "Vitamin C", "L9", 46461, "B2",
+             "", "", "", 3, "Viên", "Pat O'Brien", "TK02", "DEM", "HIEU_LUC", "", "", "", "", "", "D00099"],
             ["", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]]
     book(dot1, {
         "DONG": dong,
@@ -59,7 +64,8 @@ def make_fixtures(d):
                 ["CHAN", "A  1", "DANG_DEM", "", None, None, "", ""],
                 ["LE", "B2", "CHUA_NHAN", "", None, None, "", ""]],
         "THUOC_MOI": [["ID", "TG", "Mã đề xuất", "Tên", "ĐVT nhập", "QC", "ĐVT", "Kho", "Người", "TT", "Mã chính thức", "Ghi chú"],
-                      ["M005", dt.datetime(2026, 10, 2, 9, 30), "", "Thuốc mới", "Hộp", 10, "Viên", "CHAN", "Pat", "DA_DUYET", "TT-2", ""]],
+                      ["M005", dt.datetime(2026, 10, 2, 9, 30), "", "Thuốc mới", "Hộp", 10, "Viên", "CHAN", "Pat", "DA_DUYET", "TT-2", ""],
+                      ["M006", 46461.5, "", "Thuốc hai", "Hộp", float("nan"), "Viên", "LE", "Pat", "CHO_DUYET", "", ""]],
         "LAN1": [["Kho", "Mã", "Tên", "Lô", "HSD", "SL", "ĐVT", "Hộc", "Người"],
                  ["CHAN", "TT-1", "Paracetamol", "lo1", dt.datetime(2027, 5, 31), 200, "Viên", "A1", "Pat"]],
         "CAU_HINH": [["TRANG_THAI_CHAN", "DA_CHOT"], ["TRANG_THAI_CHAN_LUC", "02/10 10:00 TK01"]],
@@ -68,8 +74,9 @@ def make_fixtures(d):
     return hub, dot1
 
 
-def run_script(*args):
-    return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, encoding="utf-8")
+def run_script(*args, local=True):
+    env = dict(os.environ, KK_LOCAL="1") if local else {k: v for k, v in os.environ.items() if k != "KK_LOCAL"}
+    return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def psql(sql=None, f=None):
@@ -105,6 +112,8 @@ class NhapTuGoogleSheet(unittest.TestCase):
         self.assertNotIn("O'Brien", sql)
         self.assertIn("Cơ sở dữ liệu đã có dữ liệu – dừng nhập", sql)
         self.assertNotIn("delete from", sql)
+        self.assertIn("'2027-03-15'", sql)  # Excel serial 46461 as HSD
+        self.assertIn("'2027-03-15 12:00:00+07'", sql)  # serial with day fraction as a time
         self.assertIn("'2026-10-02 09:00:05+07'", sql)
         self.assertIn("'DOT01'", sql)
 
@@ -112,7 +121,26 @@ class NhapTuGoogleSheet(unittest.TestCase):
         r = run_script(*self.args, "--xoa-du-lieu-thu")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("delete from kk.tai_khoan", r.stdout)
+        self.assertNotIn("delete from kk.nhat_ky", r.stdout)
+        self.assertIn("Có dòng đếm thật – không xoá", r.stdout)
         self.assertNotIn("dừng nhập", r.stdout)
+
+    def test_co_xoa_can_kk_local(self):
+        r = run_script(*self.args, "--xoa-du-lieu-thu", local=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("KK_LOCAL=1", r.stderr)
+        self.assertEqual(r.stdout, "")
+
+    def test_canh_bao(self):
+        err = run_script(*self.args).stderr
+        self.assertIn("hộc CHAN A 1 trùng", err)
+        self.assertIn("trỏ tới dòng 99", err)
+        self.assertNotIn("mã yêu cầu", err)  # empty req ids are not duplicates
+
+    def test_serial_ngoai_khoang(self):
+        self.assertIsNone(nhap.serial(100))
+        self.assertEqual(nhap.serial(46461).date(), dt.date(2027, 3, 15))
+        self.assertEqual(nhap.num(float("inf"), "S", 1, "x"), "null")
 
     def test_thieu_file_dot(self):
         r = run_script("--trung-tam", self.hub, "--dot", "DOT09=" + self.dot1)
@@ -125,7 +153,7 @@ class NhapTuGoogleSheet(unittest.TestCase):
         with open(sql_path, "w", encoding="utf-8") as f:
             f.write(run_script(*self.args, "--xoa-du-lieu-thu").stdout)
         psql(f=sql_path)
-        self.assertEqual(psql("select count(*) from kk.dong"), "3")
+        self.assertEqual(psql("select count(*) from kk.dong"), "4")
         self.assertEqual(psql("select count(*) from kk.tai_khoan"), "3")
         self.assertEqual(psql("select vai_tro from kk.tai_khoan where tk = 'TK03'"), "DEM")
         self.assertEqual(psql("select ten from kk.tai_khoan where tk = 'TK02'"), "Pat O'Brien")
@@ -134,12 +162,15 @@ class NhapTuGoogleSheet(unittest.TestCase):
         self.assertEqual(psql("select tg::text from kk.dong where so = 1"), "2026-10-02 02:00:05+00")
         self.assertEqual(psql("select lo || '|' || hoc || '|' || hsd from kk.dong where so = 1"), "LO1|A 1|2027-05-31")
         self.assertEqual(psql("select hsd from kk.dong where so = 2"), "2027-05-31")
-        self.assertEqual(psql("select so_dong || ',' || so_thuoc_moi || ',' || trang_thai from kk.dot where id = 'DOT01'"), "3,5,DONG")
+        self.assertEqual(psql("select so_dong || ',' || so_thuoc_moi || ',' || trang_thai from kk.dot where id = 'DOT01'"), "4,6,DONG")
         self.assertEqual(psql("select trang_thai || '|' || cap_nhat from kk.dot_kho where dot_id = 'DOT01' and kho = 'CHAN'"),
                          "DA_CHOT|02/10 10:00 TK01")
         self.assertEqual(psql("select trang_thai from kk.dot_kho where dot_id = 'DOT01' and kho = 'LE'"), "DANG_KIEM")
         self.assertEqual(psql("select count(*) from kk.hoc"), "2")  # 'a 1' and 'A  1' collapse to one hộc
-        self.assertEqual(psql("select count(*) from kk.thuoc_moi"), "1")
+        self.assertEqual(psql("select count(*) from kk.thuoc_moi"), "2")
+        self.assertEqual(psql("select hsd from kk.dong where so = 4"), "2027-03-15")
+        self.assertEqual(psql("select tg::text from kk.thuoc_moi where so = 6"), "2027-03-15 05:00:00+00")
+        self.assertEqual(psql("select qc_goc is null from kk.thuoc_moi where so = 6"), "t")
         self.assertEqual(psql("select count(*) from kk.so_sanh"), "1")
         self.assertEqual(psql("select gtin from kk.thuoc where ma = 'TT-1'"), "{893001,893002}")
         # same normalisation as the app writes
@@ -147,6 +178,12 @@ class NhapTuGoogleSheet(unittest.TestCase):
         # login through the public gateway with a PIN from the fixture
         self.assertEqual(psql("""select public.api('{"action":"login","pin":"654321"}'::jsonb)->>'ok'"""), "true")
         self.assertEqual(psql("""select public.api('{"action":"login","pin":"010203"}'::jsonb)->>'role'"""), "DEM")
+        # the wipe flag refuses when real count rows exist, and deletes nothing
+        r = subprocess.run(["psql", DB_URL, "-v", "ON_ERROR_STOP=1", "-f", sql_path], capture_output=True, text=True, encoding="utf-8")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("Có dòng đếm thật", r.stderr)
+        self.assertEqual(psql("select count(*) from kk.dong"), "4")
+        self.assertEqual(psql("select count(*) from kk.tai_khoan"), "3")
         # refuses to run twice
         with open(os.path.join(self.tmp.name, "lan2.sql"), "w", encoding="utf-8") as f:
             f.write(run_script(*self.args).stdout)

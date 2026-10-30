@@ -9,6 +9,9 @@ The SQL refuses to run when kk.dong or kk.tai_khoan already has rows.
 """
 import argparse
 import datetime as dt
+import json
+import math
+import os
 import re
 import sys
 
@@ -56,11 +59,11 @@ def num(v, sheet, row, what):
         return "null"
     if isinstance(v, bool):
         return "null"
-    if isinstance(v, (int, float)):
-        return repr(int(v)) if v == int(v) else repr(float(v))
     try:
-        f = float(str(v).strip().replace(",", "."))
-    except ValueError:
+        f = float(v) if isinstance(v, (int, float)) else float(str(v).strip().replace(",", "."))
+        if not math.isfinite(f):
+            raise ValueError
+    except (ValueError, OverflowError):
         warn(sheet, row, "%s không phải số: %r" % (what, v))
         return "null"
     return repr(int(f)) if f == int(f) else repr(f)
@@ -84,9 +87,17 @@ def parse_hsd(s):
     return None
 
 
+def serial(v):
+    """Excel serial number (days since 1899-12-30, years 2000-2100) -> datetime, else None."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 36526 <= v <= 73415:
+        return dt.datetime(1899, 12, 30) + dt.timedelta(days=v)
+    return None
+
+
 def date_lit(v, sheet, row):
     if v is None or txt(v) == "":
         return "null"
+    v = serial(v) or v
     d = v.date() if isinstance(v, dt.datetime) else v if isinstance(v, dt.date) else parse_hsd(str(v))
     if d is None:
         warn(sheet, row, "HSD không đọc được, để trống: %r" % (v,))
@@ -96,8 +107,9 @@ def date_lit(v, sheet, row):
 
 def ts_lit(v, sheet, row):
     """Local Vietnam time -> timestamptz literal; None if unreadable."""
+    v = serial(v) or v
     if isinstance(v, dt.datetime):
-        d = v
+        d = v.replace(microsecond=0) if v.microsecond < 500000 else v.replace(microsecond=0) + dt.timedelta(seconds=1)
     elif isinstance(v, dt.date):
         d = dt.datetime(v.year, v.month, v.day)
     else:
@@ -175,6 +187,8 @@ def hub_sql(wb, out):
         if kho and kho not in KHO_OK:
             warn("DANH_MUC", i, "kho mặc định %r lạ, để trống" % kho)
             kho = ""
+        if ma in dm:
+            warn("DANH_MUC", i, "mã %s trùng, lấy dòng sau (như dm_() của bản cũ)" % ma)
         gtin = list(dict.fromkeys(t for t in re.split(r"[\s,;]+", txt(r[6])) if t))
         dm[ma] = [lit(ma), lit(txt(r[1])), lit(txt(r[2])), num(r[3], "DANH_MUC", i, "Quy cách"), lit(txt(r[4])),
                   lit(kho) if kho else "null",
@@ -186,7 +200,7 @@ def hub_sql(wb, out):
         v = txt(cfg.get(k)).lstrip("'")
         if v:
             out.append("insert into kk.cau_hinh (khoa, gia_tri) values (%s, %s::jsonb) on conflict (khoa) do update set gia_tri = excluded.gia_tri;"
-                       % (lit(k), lit('"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"')))
+                       % (lit(k), lit(json.dumps(v, ensure_ascii=False))))
 
     dots = []
     for i, r in rows_of(wb, "DOT", 10):
@@ -205,7 +219,7 @@ def dot_sql(wb, dot, out):
     if not dot["so_voi"] and txt(cfg.get("SO_VOI")) not in ("", "(không so sánh)"):
         dot["so_voi"] = txt(cfg.get("SO_VOI"))
 
-    dong, seen, max_so, seen_req = [], set(), 0, set()
+    dong, seen, max_so, seen_req, refs_of = [], set(), 0, set(), {}
     for i, r in rows_of(wb, "DONG", 23):
         if not txt(r[C["ID"]]):
             continue
@@ -220,12 +234,13 @@ def dot_sql(wb, dot, out):
         if tg is None:
             warn("DONG", i, "thiếu thời điểm, dùng giờ nhập")
         req = txt(r[C["REQ"]])
-        if req in seen_req:
+        if req and req in seen_req:
             warn("DONG", i, "mã yêu cầu %s trùng, để trống" % req)
             req = ""
         seen_req.add(req)
         se_thay = ints(r[C["SE_THAY"]])
         thay_boi = ints(r[C["THAY_BOI"]])
+        refs_of[so] = se_thay + thay_boi[:1]
         dong.append([lit(name), str(so), "false", tg or "now()", lit(txt(r[C["KHO"]]).upper()), lit(txt(r[C["MA"]])),
                      lit(txt(r[C["TEN"]])), lit(norm(r[C["LO"]])), date_lit(r[C["HSD"]], "DONG", i), lit(norm(r[C["HOC"]])),
                      num(r[C["HOP"]], "DONG", i, "Số hộp"), num(r[C["QC"]], "DONG", i, "1 hộp có mấy"),
@@ -234,6 +249,11 @@ def dot_sql(wb, dot, out):
                      str(thay_boi[0]) if thay_boi else "null", lit(txt(r[C["GHI"]])), lit(txt(r[C["CANH_BAO"]])),
                      lit(req) if req else "null", lit(txt(r[C["CAP_NHAT"]])),
                      "array[%s]::int[]" % ", ".join(map(str, se_thay)) if se_thay else "'{}'::int[]"])
+
+    for so, refs in refs_of.items():
+        for x in refs:
+            if x not in seen:
+                warn("DONG", "D%05d" % so, "trỏ tới dòng %d không được nhập" % x)
 
     moi, seen_m, max_m = [], set(), 0
     for i, r in rows_of(wb, "THUOC_MOI", 12):
@@ -252,7 +272,10 @@ def dot_sql(wb, dot, out):
     hoc, seen_h = [], set()
     for i, r in rows_of(wb, "HOC", 8):
         kho, h = txt(r[0]).upper(), norm(r[1])
-        if not kho or not h or (kho, h) in seen_h:
+        if not kho or not h:
+            continue
+        if (kho, h) in seen_h:
+            warn("HOC", i, "hộc %s %s trùng (sau khi chuẩn hoá), giữ dòng đầu" % (kho, h))
             continue
         seen_h.add((kho, h))
         hoc.append([lit(name), "false", lit(kho), lit(h), lit(txt(r[2]) if txt(r[2]) in HOC_ST else "CHUA_NHAN"), lit(txt(r[3])),
@@ -282,8 +305,9 @@ def dot_sql(wb, dot, out):
 GUARD = ("do $$ begin if exists (select 1 from kk.dong) or exists (select 1 from kk.tai_khoan) then "
          "raise exception 'Cơ sở dữ liệu đã có dữ liệu – dừng nhập'; end if; end $$;")
 WIPE = ("-- --xoa-du-lieu-thu: wipe seed/test data first (local testing only)\n"
-        "delete from kk.so_sanh; delete from kk.hoc; delete from kk.thuoc_moi; delete from kk.dong; delete from kk.dot_kho;\n"
-        "delete from kk.dot; delete from kk.thuoc; delete from kk.tai_khoan; delete from kk.nhat_ky; delete from kk.pin_sai;")
+        "do $$ begin if exists (select 1 from kk.dong) then raise exception 'Có dòng đếm thật – không xoá'; end if; end $$;\n"
+        "delete from kk.so_sanh; delete from kk.hoc; delete from kk.thuoc_moi; delete from kk.dot_kho;\n"
+        "delete from kk.dot; delete from kk.thuoc; delete from kk.tai_khoan; delete from kk.pin_sai;")
 
 
 def main():
@@ -291,8 +315,11 @@ def main():
     ap.add_argument("--trung-tam", required=True, help="Trung tâm workbook (NGUOI_DEM, DANH_MUC, DOT, CAU_HINH)")
     ap.add_argument("--dot", action="append", default=[], metavar="MÃ=FILE", help="đợt workbook, e.g. DOT01=dot1.xlsx (repeatable)")
     ap.add_argument("--xoa-du-lieu-thu", action="store_true",
-                    help="LOCAL TESTING ONLY: delete the seed data instead of refusing to run on a non-empty database")
+                    help="LOCAL TESTING ONLY (needs env KK_LOCAL=1): delete the seed data instead of refusing to run on a non-empty database; "
+                         "still refuses when kk.dong has rows")
     a = ap.parse_args()
+    if a.xoa_du_lieu_thu and os.environ.get("KK_LOCAL") != "1":
+        ap.error("--xoa-du-lieu-thu chỉ dùng cho CSDL local: đặt KK_LOCAL=1 nếu chắc chắn")
     files = {}
     for s in a.dot:
         k, _, f = s.partition("=")
