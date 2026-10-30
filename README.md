@@ -76,6 +76,8 @@ Việc gộp nhánh vào `main` và đẩy lên GitHub chỉ làm khi người p
 
 ## 4. Trước mỗi ngày kiểm (IT)
 
+**Trang quản trị trên máy tính.** IT mở `https://<tên>.github.io/kiemkho/quantri.html` trên máy tính và nhập PIN của tài khoản IT. Trang có 5 mục: Tài khoản, Danh mục thuốc, Kho và hộc, Số liệu so sánh, Đợt kiểm. Mục Danh mục thuốc và Số liệu so sánh có nút tải file mẫu, xuất danh sách hiện có và nhập từ Excel. Tài khoản không phải IT bị trang từ chối. Trang chỉ nhớ PIN đến khi đóng tab, vì máy tính văn phòng có thể dùng chung.
+
 - **Kiểm tra dự án còn chạy.** Gói miễn phí tự tạm dừng sau 7 ngày không có hoạt động. Dữ liệu vẫn giữ. Mở trang quản trị Supabase, nếu thấy dự án đang tạm dừng thì bấm Restore rồi chờ vài phút.
 - **Khai danh sách hộc** (khuyên làm): app, tab Quản lý, Cấu hình, nút Hộc. Người đếm sẽ thấy mục “Chưa ai nhận” để không sót kệ. Không khai cũng được, hộc tự thêm khi có người chọn.
 - **In hướng dẫn và phiếu PIN**: mở app bằng tài khoản IT, bấm ☰, chọn *In hướng dẫn + mã QR* hoặc *In phiếu PIN*.
