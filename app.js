@@ -608,7 +608,7 @@ async function sendDirect(payload) {
     const r = await api('luu', payload);
     if (r.ok) {
       S.lines = r.lines || S.lines; S.lineCache[payload.kho + '|' + payload.ma] = S.lines;
-      recordDone(payload, r); afterSave((payload.thaoTac === 'DON_LO' ? 'Đã dồn lô ' : 'Đã đếm lại hộc – lô ') + payload.lo + (r.st === 'CHO_DUYET' ? ' (chờ IT duyệt)' : ''));
+      recordDone(payload, r); refreshProg(); afterSave((payload.thaoTac === 'DON_LO' ? 'Đã dồn lô ' : 'Đã đếm lại hộc – lô ') + payload.lo + (r.st === 'CHO_DUYET' ? ' (chờ IT duyệt)' : ''));
     } else if (r.conflict) {
       S.lines = r.lines || S.lines; renderAll();
       await ask('Vừa có người cập nhật lô này', '<p>Số trên màn hình đã được làm mới. Xem lại rồi bấm lưu lần nữa.</p>');
@@ -636,7 +636,7 @@ function recordDone(payload, r) {
 }
 
 // ===================================================================== HÀNG ĐỢI GỬI
-let qBusy = false, qTimer = null;
+let qBusy = false, qTimer = null, qDaGui = false;
 function qSave() {
   const now = Date.now();
   Q = Q.filter(x => x.state !== 'done' || now - (x.doneAt || x.t) < 864e5).slice(-300);
@@ -665,7 +665,7 @@ async function qRun() {
         qTimer = setTimeout(qRun, Math.min(60000, 2000 * Math.pow(2, Math.min(it.tries, 5)))); break;
       }
       if (r.ok) {
-        it.state = 'done'; it.id = r.id; it.st = r.st; it.doneAt = Date.now(); it.canhBao = r.canhBao;
+        it.state = 'done'; it.id = r.id; it.st = r.st; it.doneAt = Date.now(); it.canhBao = r.canhBao; qDaGui = true;
         const k = it.payload.kho + '|' + it.payload.ma; if (r.lines && (it.payload.dot || S.dot) === S.dot) S.lineCache[k] = r.lines;
         if (S.drug && S.drug.ma === it.payload.ma && S.kho === it.payload.kho && (it.payload.dot || S.dot) === S.dot && r.lines) { S.lines = r.lines; }
       } else if (/Sai mã PIN|đang bị khoá|Tạm khoá/.test(r.error || '')) {
@@ -682,7 +682,7 @@ async function qRun() {
       if (S.drug && S.drug.ma === it.payload.ma) renderAll();
     }
   } finally { qBusy = false; renderSync(); }
-  refreshProgSoon();
+  if (qDaGui) { qDaGui = false; refreshProg(); } else refreshProgSoon();   // a line just saved shows in the header at once
 }
 let progT = null; function refreshProgSoon() { clearTimeout(progT); progT = setTimeout(refreshProg, 4000); }
 window.addEventListener('online', () => qRun());

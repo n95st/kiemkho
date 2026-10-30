@@ -128,6 +128,11 @@ header.top { @apply sticky top-0 z-10 border-b border-zinc-200 bg-white/95 px-3 
 .checks li.w { @apply border-amber-200 bg-amber-50 text-amber-900; }
 .checks li.e { @apply border-red-200 bg-red-50 font-medium text-red-700; }
 .actions { @apply flex flex-col gap-2; }
+/* warnings + save buttons stick to the bottom of the screen while the drug card is on screen:
+   the total, the save button and every warning about it are always seen together */
+.savebar { @apply sticky bottom-0 z-[5] -mx-4 border-t border-zinc-200 bg-white px-4 pt-2; padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
+.savebar:has(> .checks:empty):has(> .actions:empty) { @apply hidden; }
+.savebar .checks:empty { @apply hidden; }
 .act { @apply flex w-full cursor-pointer flex-col rounded-lg border px-4 py-3 text-left shadow-sm transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-45; }
 .act .t { @apply flex items-center gap-2 text-[15px] font-semibold; }
 .act .p { @apply mt-0.5 text-[13px] leading-snug; }

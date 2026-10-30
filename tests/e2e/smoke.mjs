@@ -13,8 +13,8 @@ const server = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'i
 const browser = await chromium.launch({ channel: 'chrome' });
 let fails = 0;
 
-async function newPage() {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 800 } });
+async function newPage(viewport = { width: 390, height: 800 }) {
+  const ctx = await browser.newContext({ viewport });
   await ctx.route('**/config.js*', r => r.fulfill({ contentType: 'application/javascript', body: CONFIG_JS }));
   const page = await ctx.newPage();
   page.errors = [];
@@ -71,6 +71,53 @@ try {
     await p.waitForFunction(() => JSON.parse(localStorage.kk_queue || '[]').some(x => x.state === 'done'), null, { timeout: 10000 });
     await p.click('.tabs [data-tab="toi"]');
     await p.waitForFunction(() => /205/.test(document.getElementById('toiList').textContent) && /Đã lưu/.test(document.getElementById('toiList').textContent), null, { timeout: 10000 });
+    ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+    await p.context().close();
+  });
+
+  await run('tien_do_cap_nhat_ngay', async () => {
+    const p = await newPage();
+    await vao(p, '444444');
+    await p.waitForFunction(() => /\d+ dòng/.test(document.getElementById('prog').textContent), null, { timeout: 10000 });
+    const truoc = Number((await p.textContent('#prog')).match(/(\d+) dòng/)[1]);
+    await p.fill('#q', 'para');
+    await p.click('.res[data-ma="TT-0001"]');
+    await p.fill('#lo', 'TD1'); await p.fill('#hsd', '15032027'); await p.fill('#le', '3');
+    await p.click('.act.main');
+    // the header progress must follow the save at once, not 4 s later (a counter could think the save failed and save again)
+    await p.waitForFunction(n => new RegExp(` ${n} dòng`).test(document.getElementById('prog').textContent), truoc + 1, { timeout: 2500 });
+    ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+    await p.context().close();
+  });
+
+  await run('nut_luu_luon_thay', async () => {
+    const p = await newPage({ width: 390, height: 667 });            // small phone
+    await vao(p, '444444');
+    await p.fill('#q', 'para');
+    await p.click('.res[data-ma="TT-0001"]');
+    const gan = new Date(Date.now() + 20 * 864e5), z = n => String(n).padStart(2, '0');
+    await p.fill('#lo', 'NL1'); await p.fill('#hsd', z(gan.getDate()) + z(gan.getMonth() + 1) + gan.getFullYear());   // near expiry: adds a warning line
+    await p.fill('#hop', '2'); await p.fill('#le', '5');
+    const vt = await p.evaluate(async () => {
+      document.activeElement.blur();                                  // focus() on the already focused field would not scroll
+      window.scrollTo(0, 0);
+      document.getElementById('le').focus();                         // the browser's own focus scroll, as on a phone
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const b = document.querySelector('.act.main').getBoundingClientRect(), le = document.getElementById('le').getBoundingClientRect();
+      return { top: b.top, bottom: b.bottom, h: innerHeight, leBottom: le.bottom };
+    });
+    ok(vt.top >= 0 && vt.bottom <= vt.h, 'nút Lưu nằm ngoài màn: ' + JSON.stringify(vt));
+    ok(vt.leBottom <= vt.top, 'thanh Lưu che ô đang nhập: ' + JSON.stringify(vt));
+    // right after typing the HSD (top of the card) the save button is on screen; its warnings must be too
+    const vh = await p.evaluate(async () => {
+      document.activeElement.blur();
+      window.scrollTo(0, 0);
+      document.getElementById('hsd').focus();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const b = document.querySelector('.act.main').getBoundingClientRect(), w = document.querySelector('#checks li.w').getBoundingClientRect();
+      return { top: b.top, bottom: b.bottom, h: innerHeight, canhBaoTop: w.top, canhBaoBottom: w.bottom };
+    });
+    ok(vh.bottom <= vh.h && vh.canhBaoTop >= 0 && vh.canhBaoBottom <= vh.top, 'cảnh báo HSD không hiện cạnh nút Lưu: ' + JSON.stringify(vh));
     ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
     await p.context().close();
   });
