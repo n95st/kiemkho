@@ -33,7 +33,7 @@ Ngoài phạm vi đợt này:
 - Supabase gói miễn phí: 500 MB mỗi dự án; dự án tự tạm dừng nếu 7 ngày không có hoạt động. Dữ liệu vẫn giữ, IT bấm khôi phục trong trang quản trị Supabase.
 - Repo `n95st/kiemkho` để Public và GitHub Pages phát mọi file trong repo. Không đưa link hay mã file Google, khóa bí mật hay dữ liệu thật vào repo.
 - App phải chạy trên điện thoại, mạng yếu, có hàng đợi ngoại tuyến như hiện nay.
-- Giao diện tiếng Việt. Câu báo lỗi giữ nguyên chữ như `Code.gs`, vì `app.js` dò chữ trong câu lỗi (ví dụ dò `PIN|khoá` để đăng xuất, dò `đã đóng|chọn đợt|Không thấy đợt` để tải lại đợt).
+- Giao diện tiếng Việt. Câu báo lỗi giữ nguyên chữ như `Code.gs`, vì `app.js` dò chữ trong câu lỗi (ví dụ dò `Sai mã PIN|đang bị khoá` để đăng xuất, dò `đã đóng|chọn đợt|Không thấy đợt` để tải lại đợt).
 
 ## 4. Cách làm (AI quyết)
 
@@ -56,7 +56,7 @@ Phương án đã cân nhắc và bỏ:
 
 - Lợi ích: không đổi thói quen, IT xem lại được PIN.
 - Hạn chế: ai đọc được cơ sở dữ liệu sẽ thấy PIN. Chỉ IT có tài khoản Supabase mới đọc được.
-- Rủi ro: dò PIN. Cổng `api` khóa một địa chỉ IP 10 phút sau 20 lần sai. Code cũ khóa chung mọi người sau 40 lần sai, nên kẻ xấu có thể khóa cả đội vào ngày kiểm; cách mới tránh được việc đó.
+- Rủi ro: dò PIN. Cổng `api` khóa một địa chỉ IP 10 phút sau 20 lần nhập sai PIN. Ngoài ra có một giới hạn chung: khi tổng số lần nhập sai trong 10 phút của mọi địa chỉ đạt 60, cổng khóa tất cả mọi người 10 phút. Giới hạn chung này chặn kẻ đổi liên tục địa chỉ IP để dò PIN. Cái giá là một người cố tình nhập sai nhiều lần từ nhiều địa chỉ vẫn có thể làm cả đội bị khóa 10 phút. Cái giá này đã được chấp nhận, vì khóa tự hết sau 10 phút và dữ liệu không bị mất.
 
 **Dữ liệu: một cơ sở dữ liệu chung.** Mỗi đợt kiểm là một dòng trong bảng `dot`, không còn là một file Google Sheet riêng. Dữ liệu tập (vai `TAP`) nằm chung bảng, đánh dấu bằng cột `tap`. Mã dòng vẫn đánh số riêng trong từng đợt (`D00001`, `M001`), nên app không phải đổi gì.
 

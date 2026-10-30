@@ -172,9 +172,9 @@ create function kk.xac_thuc(pin text, ip text) returns kk.tai_khoan
 language plpgsql stable security definer set search_path = kk, extensions, pg_temp as $$
 declare u kk.tai_khoan;
 begin
-  -- per-IP limit 20, plus a global cap of 300 failures so rotating IPs cannot brute-force PINs
+  -- per-IP limit 20, plus a global cap of 60 failures so rotating IPs cannot brute-force PINs
   if exists (select 1 from kk.pin_sai p where p.khoa = ip and p.so_lan >= 20 and p.het_han > now())
-     or (select coalesce(sum(p.so_lan), 0) from kk.pin_sai p where p.het_han > now()) >= 300 then
+     or (select coalesce(sum(p.so_lan), 0) from kk.pin_sai p where p.het_han > now()) >= 60 then
     raise exception 'Tạm khoá đăng nhập 10 phút vì nhập sai PIN quá nhiều lần';
   end if;
   select * into u from kk.tai_khoan t where t.pin = trim(coalesce(xac_thuc.pin, ''));

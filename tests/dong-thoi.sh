@@ -69,5 +69,22 @@ for kho in CHAN LE; do
     fi
   done
 done
+# IT closes a kho (DA_CHOT) while someone saves a count without a reason: the save must wait for the commit and then be refused,
+# never slip in as a plain HIEU_LUC line after the kho is closed. Session 1 holds the closing transaction open for 2 s.
+q "delete from kk.dong where dot_id = 'DOT01'; update kk.dot_kho set trang_thai = 'DANG_KIEM' where dot_id = 'DOT01'" >/dev/null
+psql "$DB" -XAtq -v ON_ERROR_STOP=1 > "$TMP/chot" <<'SQL' &
+begin;
+select public.api('{"action":"dattrangthaikho","pin":"111111","dot":"DOT01","kho":"CHAN","trangThai":"DA_CHOT"}');
+select pg_sleep(2);
+commit;
+SQL
+sleep 1
+res=$(q "select public.api('{\"action\":\"luu\",\"pin\":\"444444\",\"dot\":\"DOT01\",\"kho\":\"CHAN\",\"ma\":\"TT-0001\",\"hoc\":\"A 1\",\"le\":5,\"lo\":\"A1\",\"hsd\":\"15/03/2027\"}')")
+wait
+n=$(q "select count(*) from kk.dong where dot_id = 'DOT01' and trang_thai = 'HIEU_LUC'")
+if [ "$n" != 0 ] || ! echo "$res" | grep -q 'đã chốt'; then
+  echo "FAIL chốt kho vs lưu: $n dòng HIEU_LUC, trả lời: $res"; exit 1
+fi
+q "delete from kk.dong where dot_id = 'DOT01'; update kk.dot_kho set trang_thai = 'DANG_KIEM' where dot_id = 'DOT01'" >/dev/null
 q "delete from kk.dong where dot_id = 'DOT01'; delete from kk.thuoc_moi where dot_id = 'DOT01'; delete from kk.thuoc where ma = 'TT-0100'; update kk.dot set so_thuoc_moi = 0 where id = 'DOT01'" >/dev/null
 echo OK

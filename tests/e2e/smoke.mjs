@@ -97,6 +97,58 @@ try {
     await ctx.close();
   });
 
+  // Phone with 3 queued lines (state pending), signed in as TK04; counts "luu" requests that reach the server.
+  async function pageWithQueue(tag) {
+    const ctx = await browser.newContext();
+    await ctx.route('**/config.js*', r => r.fulfill({ contentType: 'application/javascript', body: CONFIG_JS }));
+    const dot = { id: 'DOT01', ten: 'Đợt thử', st: 'MO', kho: ['CHAN', 'LE'], ngay: '', soVoi: '', trangThai: {} };
+    const q = [1, 2, 3].map(i => ({ reqId: `${tag}-${i}`, sl: 10, ten: 'Paracetamol 500mg', t: Date.now(), state: 'pending',
+      payload: { dot: 'DOT01', kho: 'CHAN', ma: 'TT-0001', lo: 'Q' + i, hsd: '15/03/2027', hoc: 'A 1', hop: '', qc: '', le: 10,
+        dvt: 'Viên', thaoTac: 'CONG_THEM', lyDo: '', reqId: `${tag}-${i}`, gtin: '', khongLo: false } }));
+    await ctx.addInitScript(([d, queue]) => {
+      if (localStorage.kk_seeded) return; localStorage.kk_seeded = '1';
+      const set = (k, v) => localStorage.setItem('kk_' + k, JSON.stringify(v));
+      set('pin', '444444'); set('user', { tk: 'TK04', ten: 'Người đếm 4', role: 'DEM', roleTen: 'Người đếm', tap: false, dots: [d] });
+      set('dot', 'DOT01'); set('dotInfo', d); set('dots', [d]); set('kho', 'CHAN'); set('hoc', 'A 1'); set('queue', queue);
+    }, [dot, q]);
+    const p = await ctx.newPage(); p.errors = []; p.luu = 0;
+    p.on('pageerror', e => p.errors.push(e.message));
+    p.on('request', rq => { if (rq.url().endsWith('/rpc/api') && /"action":"luu"/.test(rq.postData() || '')) p.luu++; });
+    await p.goto(BASE);
+    return p;
+  }
+  const states = p => p.evaluate(() => JSON.parse(localStorage.kk_queue || '[]').map(x => x.state).join());
+
+  // IT resets the PIN while the phone still holds queued lines: at most ONE luu request goes out, the lines stay pending
+  // (never "error"), and the counter lands on the PIN screen.
+  await run('hang_doi_pin_doi', async () => {
+    sql("delete from kk.pin_sai; delete from kk.dong where req_id like 'pdoi-%'; update kk.tai_khoan set pin = '987654' where tk = 'TK04'");
+    try {
+      const p = await pageWithQueue('pdoi');
+      await p.waitForFunction(() => !document.getElementById('login').classList.contains('hidden'), null, { timeout: 10000 });
+      await p.waitForTimeout(1500);
+      ok(p.luu <= 1, `${p.luu} yêu cầu luu đã tới máy chủ (mong đợi tối đa 1)`);
+      ok(await states(p) === 'pending,pending,pending', 'dòng chờ không còn pending: ' + await states(p));
+      ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+      await p.context().close();
+    } finally { sql("update kk.tai_khoan set pin = '444444' where tk = 'TK04'; delete from kk.pin_sai"); }
+  });
+
+  // Temporary lock (global cap reached): the counter stays signed in, the lines stay pending and are retried later.
+  await run('hang_doi_tam_khoa', async () => {
+    sql("delete from kk.pin_sai; insert into kk.pin_sai values ('tran-chung', 60, now() + interval '10 minutes')");
+    try {
+      const p = await pageWithQueue('tkhoa');
+      await p.waitForTimeout(3000);
+      ok(p.luu <= 1, `${p.luu} yêu cầu luu đã tới máy chủ (mong đợi tối đa 1)`);
+      ok(await p.evaluate(() => localStorage.kk_pin) === '"444444"', 'bị đăng xuất khi chỉ tạm khoá');
+      ok(await p.evaluate(() => document.getElementById('login').classList.contains('hidden')), 'màn PIN hiện ra khi chỉ tạm khoá');
+      ok(await states(p) === 'pending,pending,pending', 'dòng chờ không còn pending: ' + await states(p));
+      ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+      await p.context().close();
+    } finally { sql("delete from kk.pin_sai"); }
+  });
+
   await run('can_xem', async () => {
     const p = await newPage();
     await vao(p, '111111');

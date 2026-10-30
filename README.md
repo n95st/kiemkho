@@ -15,7 +15,7 @@ Repo này công khai. Không bao giờ đưa vào repo: link hoặc mã file Goo
 
 ## 1. Cài đặt một lần
 
-Cần cài sẵn: [Supabase CLI](https://supabase.com/docs/guides/cli) và Docker (Docker chỉ cần để chạy thử ở máy local).
+Cần cài sẵn: [Supabase CLI](https://supabase.com/docs/guides/cli), `psql` (công cụ dòng lệnh của Postgres, dùng ở mục 2 để nhập dữ liệu) và Docker (Docker chỉ cần để chạy thử ở máy local).
 
 1. Vào https://supabase.com tạo dự án mới. Chọn vùng **Singapore**, gói **Free**. Ghi lại mã dự án (project ref), Project URL và mật khẩu cơ sở dữ liệu.
 2. Ở thư mục gốc của repo, chạy `supabase link --project-ref <mã dự án>`. Lệnh sẽ hỏi mật khẩu cơ sở dữ liệu.
@@ -59,8 +59,18 @@ Danh sách này gom các điều còn phải kiểm trên dự án Supabase th�
 4. **Thử bằng tài khoản Tập.** Đăng nhập, đếm 3 dòng, hoàn tác 1 dòng. Kết quả phải giống bản cũ.
 5. **Đo tốc độ.** Chạy ca `do_toc_do` của `tests/e2e/smoke.mjs` với Supabase thật. Mục tiêu: trung bình dưới 500 ms mỗi thao tác.
 6. **Giữ bản Apps Script cũ 2 tuần** làm đường lui.
-7. **Cách lui.** Nếu có sự cố, chạy `git revert` commit gộp nhánh vào `main`, rồi đẩy lại. GitHub Pages quay về bản cũ sau khoảng 1 phút.
+7. **Cách lui.** Nếu có sự cố, chạy `git revert` commit gộp nhánh vào `main`, rồi đẩy lại. GitHub Pages quay về bản cũ sau khoảng 1 phút. Lưu ý: cách lui này chỉ không làm mất dữ liệu khi chưa có ngày đếm thật nào chạy trên Supabase. Sau ngày đếm thật đầu tiên, các dòng đã ghi trong Supabase không tự quay về Google Sheet, nên lui lúc đó là mất các dòng ấy.
 8. **Mở thử trên điện thoại thật** (tài khoản Tập): chọn đợt, chọn hộc, chọn thuốc không còn chờ lâu.
+9. **Triệu chứng khi cổng khóa đăng nhập.** Nếu cả đội cùng thấy câu “Tạm khoá đăng nhập 10 phút vì nhập sai PIN quá nhiều lần”, nghĩa là tổng số lần nhập sai PIN của mọi địa chỉ trong 10 phút đã đạt 60 (giới hạn chung). Người đã đăng nhập sẵn không bị đăng xuất. Dòng đang chờ gửi trên điện thoại vẫn được giữ và tự gửi lại sau khi khóa hết. Cách xử lý: chờ 10 phút, hoặc chạy `delete from kk.pin_sai;` trong trang quản trị Supabase (mục SQL Editor).
+
+### Ngày chuyển từ bản Apps Script sang Supabase
+
+Làm đúng thứ tự dưới đây để số đếm không bị tách đôi giữa hai nơi.
+
+1. **Trước khi tải file để nhập:** mọi điện thoại phải hiện biểu tượng đồng bộ màu xanh (không còn dòng chờ gửi). Máy nào còn dòng chờ thì mở app có mạng cho tới khi hết.
+2. **Đóng mọi đợt trong file Trung tâm của bản cũ:** ở sheet `DOT`, đổi cột trạng thái của từng đợt từ `MO` sang `DONG`. Khi đó Apps Script từ chối mọi lần ghi mới.
+3. Tải các file về và nhập vào Supabase (mục 2).
+4. **Mở lại đợt trong app mới** (tab Quản lý, mục Đợt kiểm, nút *Mở lại*). Dòng cũ còn sót trên điện thoại sẽ báo lỗi và nằm lại trong máy. Sau khi tải lại trang, người đếm bấm *Gửi lại* ở tab Của tôi. Dòng đó đi tới Supabase với cùng mã yêu cầu nên không bị ghi hai lần.
 
 Việc gộp nhánh vào `main` và đẩy lên GitHub chỉ làm khi người phụ trách đã đồng ý.
 
@@ -75,8 +85,9 @@ Việc gộp nhánh vào `main` và đẩy lên GitHub chỉ làm khi người p
 
 ## 5. Nhiều đợt kiểm (IT)
 
-- **Tạo đợt mới**: app, tab Quản lý, mục Đợt kiểm, *Tạo đợt mới*. Đặt tên, chọn kho, chọn đợt để so sánh (đợt trước, Lần 1 file cũ, hoặc không so sánh), tick *dùng lại danh sách hộc* nếu muốn.
+- **Tạo đợt mới**: app, tab Quản lý, mục Đợt kiểm, *Tạo đợt mới*. Đặt tên, chọn kho, chọn đợt để so sánh (một đợt trước đó, hoặc không so sánh), tick *dùng lại danh sách hộc* nếu muốn.
 - **Người đếm chọn đợt**: chỉ có 1 đợt đang mở thì tự vào. Nhiều đợt đang mở thì app hỏi chọn.
+- **Số liệu so sánh từ file cũ**: không có lựa chọn riêng khi tạo đợt. Muốn so với số liệu của file Excel cũ, vào tab Quản lý, bấm nút *Số liệu so sánh* và nhập file.
 - **Đóng đợt** khi xong: không ai nhập thêm được, vẫn xem được. Cần thì *Mở lại*.
 - **Danh mục dùng chung**: mã vạch học ở đợt này dùng được ở đợt sau. Thuốc mới do IT duyệt được thêm vào danh mục chung.
 - Kho **đã chốt**: mỗi lần lưu là phiếu bổ sung, chờ IT duyệt.
@@ -100,7 +111,7 @@ Chưa kiểm: bước này chưa chạy thử với file xuất từ bản Supab
   npx tailwindcss -c tailwind.config.js -i src/input.css -o app.css --minify
   ```
 
-Câu báo lỗi tiếng Việt do máy chủ trả về được `app.js` dò chữ (ví dụ `PIN|khoá` để đăng xuất, `đã đóng|chọn đợt|Không thấy đợt` để tải lại đợt). Sửa chữ trong câu lỗi phải kiểm lại các chỗ dò này.
+Câu báo lỗi tiếng Việt do máy chủ trả về được `app.js` dò chữ (ví dụ `Sai mã PIN|đang bị khoá` để đăng xuất, `đã đóng|chọn đợt|Không thấy đợt` để tải lại đợt). Sửa chữ trong câu lỗi phải kiểm lại các chỗ dò này.
 
 ## 8. Chạy kiểm thử
 

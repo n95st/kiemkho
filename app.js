@@ -136,7 +136,8 @@ async function api(action, data, timeout) {
   } catch (e) {
     throw Object.assign(new Error(e.name === 'AbortError' ? 'Mạng chậm – quá thời gian chờ' : 'Không kết nối được máy chủ'), { isNet: true });
   } finally { clearTimeout(t); }
-  if (r.status >= 500) throw Object.assign(new Error('Không kết nối được máy chủ'), { isNet: true });      // incl. a paused project
+  if (r.status >= 500 || r.status === 401 || r.status === 403 || r.status === 429)                          // incl. a paused project, gateway or rate limit
+    throw Object.assign(new Error('Không kết nối được máy chủ'), { isNet: true });
   let j = null; try { j = JSON.parse(await r.text()); } catch (e) {}
   if (r.ok && j !== null) return j;
   throw new Error((j && j.message) || 'Máy chủ trả về không đúng');
@@ -220,7 +221,7 @@ async function revalidate() {               // mở app lại khi đã đăng nh
   try {
     const r = await api('login');
     if (r.ok) { applyLogin(r); if (!dotOk()) await chooseDot(true); }
-    else if (/PIN|khoá/i.test(r.error || '')) { LS.del('pin'); LS.del('user'); toast(r.error, 'bad'); setTimeout(() => location.reload(), 1500); }
+    else if (/Sai mã PIN|đang bị khoá/.test(r.error || '')) { S.pin = ''; LS.del('pin'); LS.del('user'); toast(r.error, 'bad'); setTimeout(() => location.reload(), 1500); }   // never on 'Tạm khoá': that is the IP lock, not the PIN
   } catch (e) {}
 }
 
@@ -677,6 +678,7 @@ async function qRun() {
   if (qBusy) return; qBusy = true; clearTimeout(qTimer);
   try {
     for (;;) {
+      if (!S.pin) break;                                   // signed out (PIN rejected): keep every line pending for the next sign-in
       const it = Q.find(x => x.state === 'pending'); if (!it) break;
       it.state = 'sending'; qSave();
       let r;
@@ -690,6 +692,13 @@ async function qRun() {
         it.state = 'done'; it.id = r.id; it.st = r.st; it.doneAt = Date.now(); it.canhBao = r.canhBao;
         const k = it.payload.kho + '|' + it.payload.ma; if (r.lines && (it.payload.dot || S.dot) === S.dot) S.lineCache[k] = r.lines;
         if (S.drug && S.drug.ma === it.payload.ma && S.kho === it.payload.kho && (it.payload.dot || S.dot) === S.dot && r.lines) { S.lines = r.lines; }
+      } else if (/Sai mã PIN|đang bị khoá|Tạm khoá/.test(r.error || '')) {
+        // PIN changed / account locked / IP locked: not a problem with the line. Stop the loop (one request only, so the queue
+        // cannot pile up wrong-PIN failures into an IP lock), keep the line pending.
+        it.state = 'pending'; it.tries = (it.tries || 0) + 1; qSave();
+        if (/Tạm khoá/.test(r.error)) qTimer = setTimeout(qRun, Math.min(60000, 2000 * Math.pow(2, Math.min(it.tries, 5))));
+        else revalidate();
+        break;
       } else if (r.need || r.conflict) { it.state = 'need'; it.need = r.need; it.error = r.error; it.info = r; toast('Có dòng cần xử lý – xem tab "Của tôi"', 'bad', { text: 'Xem', fn: () => switchTab('toi') }); }
       else { it.state = 'error'; it.error = r.error; toast('Lỗi lưu: ' + r.error, 'bad', { text: 'Xem', fn: () => switchTab('toi') });
         if (/đã đóng|chọn đợt|Không thấy đợt/i.test(r.error || '')) revalidate(); }

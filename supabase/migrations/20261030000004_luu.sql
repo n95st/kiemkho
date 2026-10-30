@@ -171,7 +171,9 @@ begin
     if tt = 'DON_LO' and ly_do = '' then raise exception 'Dồn cả lô cần ghi lý do'; end if;
   end if;
 
-  chot := kk.trang_thai_kho(d, kho) = 'DA_CHOT';
+  -- "for share" meets the row lock a_dattrangthaikho takes, so a save never races past a kho being closed
+  -- (lock order: proposal row, khoa_lo, dot_kho row; the closer only locks dot_kho, so no deadlock)
+  chot := coalesce((select dk.trang_thai from kk.dot_kho dk where dk.dot_id = d.id and dk.kho = fn.kho for share), 'DANG_KIEM') = 'DA_CHOT';
   if chot and ly_do = '' then
     raise exception '% đã chốt – ghi lý do bổ sung để IT duyệt', (select k.ten from kk.kho k where k.ma = fn.kho);
   end if;

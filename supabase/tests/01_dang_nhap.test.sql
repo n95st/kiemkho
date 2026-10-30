@@ -1,5 +1,5 @@
 begin;
-select plan(25);
+select plan(26);
 
 select is((public.api('{"action":"login","pin":"123"}')->>'error'), 'Sai mã PIN', 'pin_sai');
 select is((public.api('{"action":"login","pin":"000000"}')->>'error'),
@@ -55,12 +55,15 @@ select public.api('{"action":"login","pin":"123"}');
 select ok(exists (select 1 from kk.pin_sai where khoa = repeat('a', 64)), 'khoa_cat_64_ky_tu');
 select ok(not exists (select 1 from kk.pin_sai where khoa = 'het-han'), 'xoa_hang_het_han');
 
--- global cap: 300 failures across different IPs lock everyone, even a fresh IP with a correct PIN
+-- global cap: 60 failures across different IPs lock everyone, even a fresh IP with a correct PIN
 select set_config('request.headers', '{"x-forwarded-for":"4.4.4.4"}', true);
 select is((public.api('{"action":"login","pin":"444444"}')->>'ok'), 'true', 'duoi_tran_chung_van_dang_nhap');
-insert into kk.pin_sai select 'g' || n, 20, now() + interval '5 minutes' from generate_series(1, 15) n;
+-- top the live total up to exactly 59 (one below the cap): still open
+insert into kk.pin_sai select 'g1', 59 - coalesce(sum(so_lan), 0), now() + interval '5 minutes' from kk.pin_sai where het_han > now();
+select is((public.api('{"action":"login","pin":"444444"}')->>'ok'), 'true', 'duoi_tran_chung_59');
+update kk.pin_sai set so_lan = so_lan + 1 where khoa = 'g1';
 select is((public.api('{"action":"login","pin":"444444"}')->>'error'),
-  'Tạm khoá đăng nhập 10 phút vì nhập sai PIN quá nhiều lần', 'tran_chung_300');
+  'Tạm khoá đăng nhập 10 phút vì nhập sai PIN quá nhiều lần', 'tran_chung_60');
 
 select ok(not has_table_privilege('anon', 'kk.dong', 'select'), 'anon_khong_doc_bang');
 select ok(not has_function_privilege('anon', 'kk.a_login(kk.tai_khoan, kk.dot, jsonb)', 'execute'), 'anon_khong_goi_ham_kk');
