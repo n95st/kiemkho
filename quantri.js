@@ -1,5 +1,5 @@
 /* Màn cấu hình cho IT (tài khoản, danh mục, kho, hộc, cấu hình chung, số liệu so sánh).
- * Script thường nạp sau app.js, dùng api, esc, qtDocExcel của chung.js và ask, toast, S, isIT, loadDm, loadQl, applyLogin, search của app.js.
+ * Script thường nạp sau app.js, dùng api, esc, qtDocExcel của chung.js, tachTheoKho, doiDongLoi của xuatexcel.js và ask, toast, S, isIT, loadDm, loadQl, applyLogin, search của app.js.
  * Máy chủ vẫn từ chối người không phải IT; việc ẩn nút chỉ để gọn giao diện. */
 'use strict';
 
@@ -185,17 +185,13 @@ async function qtSoSanh() {
   if (!f) return;
   try {
     const { list, so } = await qtDocExcel(f, 4);              // columns: Kho, Mã, Tên, Số lô, HSD, SL, ĐVT, Hộc, Người đếm
-    const ks = khoOfDot(), theoKho = {}, loi = [];
-    list.forEach((r, i) => {
-      const k = r[0].toUpperCase();
-      if (!ks.includes(k)) loi.push({ dong: i + 1, error: 'Kho ' + (r[0] || '(trống)') + ' không có trong đợt này' });
-      else (theoKho[k] = theoKho[k] || { rows: [], so: [] }, theoKho[k].rows.push(r.slice(1)), theoKho[k].so.push(so[i]));
-    });
+    const { loi, nhieuKho } = tachTheoKho(list, so, khoOfDot());
     let html = '';
-    if (loi.length) html = '<p>Chưa nhập gì</p>' + qtDongLoi(loi, so);
-    else for (const k of Object.keys(theoKho)) {
-      const r = await qtGoi('nhapSoSanh', { kho: k, list: theoKho[k].rows }, 180000);
-      html += `<p>${esc(KHO_TEN[k])}: ${r.soDong} dòng</p>` + qtDongLoi(r.loi, theoKho[k].so);
+    if (loi.length) html = '<p>Chưa nhập gì</p>' + qtDongLoi(loi);
+    else if (nhieuKho.length) {                               // one call for the whole file: a bad row in any kho changes no kho
+      const r = await qtGoi('nhapSoSanh', { nhieuKho: nhieuKho.map(k => ({ kho: k.kho, list: k.list })) }, 180000);
+      html = r.loi.length ? '<p>Chưa nhập gì</p>' + qtDongLoi(doiDongLoi(r.loi, nhieuKho))
+        : nhieuKho.map(k => `<p>${esc(KHO_TEN[k.kho])}: ${r.theoKho[k.kho]} dòng</p>`).join('');
     }
     await qtKetQua(html || '<p>Tệp không có dòng nào</p>');
   } catch (e) { qtLoi(e); }

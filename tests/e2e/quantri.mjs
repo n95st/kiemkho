@@ -14,7 +14,7 @@ const sql = q => execFileSync('docker', ['exec', 'supabase_db_kiem_kho', 'psql',
 
 // Test workbooks (openpyxl): drugs for the danh mục import, one HSD cell is a real date
 const dir = mkdtempSync(join(tmpdir(), 'kk-quantri-'));
-const XLSX_DM = join(dir, 'danh-muc.xlsx'), XLSX_SS = join(dir, 'so-sanh.xlsx');
+const XLSX_DM = join(dir, 'danh-muc.xlsx'), XLSX_SS = join(dir, 'so-sanh.xlsx'), XLSX_SS_LOI = join(dir, 'so-sanh-loi.xlsx');
 execFileSync('python3', ['-c', `
 import sys, datetime
 from openpyxl import Workbook
@@ -31,7 +31,12 @@ ws.append(['CHAN', 'TT-0001', 'Paracetamol 500mg', 'L1', datetime.date(2027, 3, 
 ws.append(['CHAN', 'TT-0001', 'Paracetamol 500mg', 'L2', 46100, 30, 'Viên', 'A 2', 'Lan'])
 ws.append(['LE', 'TT-0009', 'Vitamin C', 'V1', '15/04/2027', 7, 'Viên', 'B 1', 'Minh'])
 wb.save(sys.argv[2])
-`, XLSX_DM, XLSX_SS]);
+wb = Workbook(); ws = wb.active                                  # kho CHAN fine, kho LE has a bad HSD on file row 3
+ws.append(['Kho', 'Mã', 'Tên', 'Số lô', 'HSD', 'SL', 'ĐVT', 'Hộc', 'Người đếm'])
+ws.append(['CHAN', 'TT-0002', 'Thuốc mới', 'N1', '15/03/2027', 5, 'Viên', '', ''])
+ws.append(['LE', 'TT-0009', 'Vitamin C', 'V1', '31/02/2027', 7, 'Viên', '', ''])
+wb.save(sys.argv[3])
+`, XLSX_DM, XLSX_SS, XLSX_SS_LOI]);
 
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
 const browser = await chromium.launch({ channel: 'chrome' });
@@ -190,6 +195,20 @@ try {
     ok(/CHẴN: 2 dòng/.test(await p.textContent('#mBody')), 'kết quả nhập so sánh sai: ' + await p.textContent('#mBody'));
     ok(sql("select count(*) from kk.so_sanh where dot_id = 'DOT01'") === '3', 'số dòng so sánh không phải 3');
     ok(sql("select string_agg(to_char(hsd,'DD/MM/YYYY'), ',' order by lo) from kk.so_sanh where dot_id = 'DOT01'") === '15/03/2027,' + sql("select to_char(date '1899-12-30' + 46100, 'DD/MM/YYYY')") + ',15/04/2027', 'HSD Excel không đổi đúng ngày');
+    ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+    await p.context().close();
+  });
+
+  await run('nhap_so_sanh_kho_sau_loi_giu_kho_dau', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMan(p, 'qtSoSanh', 'Nhập số liệu so sánh từ Excel');
+    await p.setInputFiles('#qtFile', XLSX_SS_LOI);
+    await p.click('#mBtns button:has-text("Nhập")');
+    await p.waitForFunction(() => document.getElementById('mTitle').textContent === 'Kết quả nhập', null, { timeout: 15000 });
+    const body = await p.textContent('#mBody');
+    ok(/Chưa nhập gì/.test(body) && /Dòng 3: HSD không hợp lệ/.test(body), 'không báo lỗi dòng 3: ' + body);
+    ok(sql("select string_agg(lo, ',' order by lo) from kk.so_sanh where dot_id = 'DOT01' and kho = 'CHAN'") === 'L1,L2', 'kho Chẵn bị thay dù kho Lẻ lỗi');
     ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
     await p.context().close();
   });
