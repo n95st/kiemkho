@@ -305,12 +305,67 @@ async function xoaHoc(hoc) {
   await taiHoc();
 }
 
+// ===================================================================== Số liệu so sánh
+const SSO = { list: [], key: [], kho: '' };
+async function veSoSanh() {
+  if (!S.dotInfo) return void ($('bang').innerHTML = chuaCoDot());
+  if (SSO.kho && !S.dotInfo.kho.includes(SSO.kho)) SSO.kho = '';
+  $('bang').innerHTML = `<div class="cong-cu">${oTim()}${locChon('locKhoSs', 'Tất cả', S.dotInfo.kho.map(k => [k, k]))}
+    <button type="button" id="btnMau" class="btn">Tải file mẫu</button><button type="button" id="btnXuat" class="btn">Xuất danh sách hiện có</button>${nutNhap('ghi-dot')}</div><div id="ds"></div>`;
+  $('locKhoSs').value = SSO.kho;
+  $('tim').oninput = veBangSs;
+  $('locKhoSs').onchange = () => { SSO.kho = $('locKhoSs').value; taiSoSanh(); };
+  $('btnMau').onclick = () => taiFile(soSoSanh([VIDU_SO_SANH]), 'SO-SANH-MAU.xlsx').catch(baoLoi);
+  $('btnXuat').onclick = () => taiFile(soSoSanh(SSO.list), tenFileExcel(S.dotInfo.ten).replace('KIEM-KHO-', 'SO-SANH-')).catch(baoLoi);
+  ganNhap(nhapSoSanh);
+  await taiSoSanh();
+}
+async function taiSoSanh() {
+  const kho = SSO.kho;
+  let r;
+  try { r = await goi('dsSoSanh', { kho }); } catch (e) { r = e; }
+  if (mucMo !== 'soSanh' || kho !== SSO.kho || !$('ds')) return;
+  if (r instanceof Error) return void ($('ds').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  SSO.list = r.list;
+  SSO.key = SSO.list.map(x => norm(x[1] + ' ' + x[2] + ' ' + x[3]));
+  veBangSs();
+}
+function veBangSs() {
+  const q = norm($('tim').value.trim());
+  veBang($('ds'), LAN1_HEADER, SSO.list.map(x => x.map(String)), i => !q || SSO.key[i].includes(q), () => {}, -1);
+}
+/** All or nothing over the whole file: check-only call, confirm with per-kho consequences, then one real call for every kho. */
+async function nhapSoSanh(f) {
+  const { tieuDe, list, so } = await qtDocExcel(f, 4);
+  if (!dungTieuDe(tieuDe, LAN1_HEADER)) throw new Error('File không đúng mẫu số liệu so sánh');
+  const vd = timDongViDu(list, so, 1);
+  if (vd) throw new Error('Dòng ' + vd + ' là dòng ví dụ của file mẫu');
+  const { loi, nhieuKho } = tachTheoKho(list, so, S.dotInfo.kho);
+  if (loi.length) return ketQua('<p>Chưa nhập gì</p>' + dongLoi(loi));
+  if (!nhieuKho.length) return ketQua('<p>Tệp không có dòng nào</p>');
+  const gui = nhieuKho.map(k => ({ kho: k.kho, list: k.list }));
+  const kt = await goi('nhapSoSanh', { nhieuKho: gui, chiKiem: true }, 180000);
+  if (kt.loi.length) return ketQua('<p>Chưa nhập gì</p>' + dongLoi(doiDongLoi(kt.loi, nhieuKho)));
+  const dang = (await goi('dsSoSanh', { kho: '' })).list;
+  const xn = nhieuKho.map(k => `<p>Kho ${esc(k.kho)}: thay ${dang.filter(x => x[0] === k.kho).length} dòng đang có bằng ${k.list.length} dòng trong file</p>`).join('');
+  if (!await hoi('Nhập số liệu so sánh', xn, [{ text: 'Nhập', value: true, cls: 'danger' }, { text: 'Huỷ', value: false, cls: 'ghost' }])) return;
+  let r;
+  try { r = await goi('nhapSoSanh', { nhieuKho: gui }, 180000); } catch (e) {
+    if (!e.isNet) throw e;
+    await taiSoSanh();                                             // each kho is either all old or all new: the table shows which
+    return ketQua('<p class="msg">Không rõ đã nhập xong chưa</p>');
+  }
+  if (r.loi.length) return ketQua('<p>Chưa nhập gì</p>' + dongLoi(doiDongLoi(r.loi, nhieuKho)));
+  await taiSoSanh();
+  await ketQua(nhieuKho.map(k => `<p>Kho ${esc(k.kho)}: ${r.theoKho[k.kho]} dòng</p>`).join(''));
+}
+
 // ===================================================================== menu: [key, label, draw()]
 const MUC = [
   ['taiKhoan', 'Tài khoản', veTaiKhoan],
   ['danhMuc', 'Danh mục thuốc', veDanhMuc],
   ['kho', 'Kho và hộc', veKho],
-  ['soSanh', 'Số liệu so sánh', async () => {}],
+  ['soSanh', 'Số liệu so sánh', veSoSanh],
   ['dot', 'Đợt kiểm', async () => {}],
 ];
 

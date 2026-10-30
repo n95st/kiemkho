@@ -21,7 +21,7 @@ for r in ws.iter_rows(values_only=True): print('|'.join('' if c is None else str
 `, file], { encoding: 'utf8' }).trim().split('\n');
 
 // Test workbooks (openpyxl): a comparison file, used where a danh mục file is expected
-const XLSX_SS = join(dir, 'so-sanh.xlsx');
+const XLSX_SS = join(dir, 'so-sanh.xlsx'), SS_HAI_KHO = join(dir, 'ss-hai-kho.xlsx'), SS_KHO_SAU_LOI = join(dir, 'ss-kho-sau-loi.xlsx');
 execFileSync('python3', ['-c', `
 import sys, datetime
 from openpyxl import Workbook
@@ -29,7 +29,20 @@ wb = Workbook(); ws = wb.active
 ws.append(['Kho', 'Mã', 'Tên', 'Số lô', 'HSD', 'SL', 'ĐVT', 'Hộc', 'Người đếm'])
 ws.append(['CHAN', 'TT-0001', 'Paracetamol 500mg', 'L1', datetime.date(2027, 3, 15), 120, 'Viên', 'A 1', 'Lan'])
 wb.save(sys.argv[1])
-`, XLSX_SS]);
+H = ['Kho', 'Mã', 'Tên', 'Số lô', 'HSD', 'SL', 'ĐVT', 'Hộc', 'Người đếm']
+wb = Workbook(); ws = wb.active                                  # two kho; one lot is the text '00123'
+ws.append(H)
+ws.append(['CHAN', 'TT-0001', 'Paracetamol 500mg', '00123', datetime.date(2027, 3, 15), 120, 'Viên', 'A 1', 'Lan'])
+ws.append(['CHAN', 'TT-0001', 'Paracetamol 500mg', 'L2', None, 30.5, 'Viên', 'A 2', 'Lan'])
+ws.append(['LE', 'TT-0009', 'Vitamin C', 'V1', '15/04/2027', 7, 'Viên', 'B 1', 'Minh'])
+ws['D2'].number_format = '@'
+wb.save(sys.argv[2])
+wb = Workbook(); ws = wb.active                                  # kho CHAN fine, kho LE has a bad HSD on file row 3
+ws.append(H)
+ws.append(['CHAN', 'TT-0002', 'Thuốc mới', 'N1', '15/03/2027', 5, 'Viên', '', ''])
+ws.append(['LE', 'TT-0009', 'Vitamin C', 'V1', '31/02/2027', 7, 'Viên', '', ''])
+wb.save(sys.argv[3])
+`, XLSX_SS, SS_HAI_KHO, SS_KHO_SAU_LOI]);
 const goiCo = (p, action) => p.goiApi.filter(b => b.includes(`"action":"${action}"`));
 
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
@@ -424,6 +437,132 @@ try {
     await p.context().close();
   });
 
+  // ------------------------------------------------------------ số liệu so sánh
+  const ssDot01 = () => sql("select string_agg(kho || '|' || lo || '|' || coalesce(to_char(hsd, 'DD/MM/YYYY'), '') || '|' || sl, ',' order by kho, lo) from kk.so_sanh where dot_id = 'DOT01'");
+  const hopCo = (p, re) => p.waitForFunction(s => new RegExp(s).test(document.getElementById('hop').textContent), re, { timeout: 15000 });
+
+  await run('so_sanh_nhap_hai_kho', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.setInputFiles('#fileNhap', SS_HAI_KHO);
+    await hopCo(p, 'thay');
+    const xn = await p.textContent('#hop');
+    ok(xn.includes('Kho CHAN: thay 0 dòng đang có bằng 2 dòng trong file') && xn.includes('Kho LE: thay 0 dòng đang có bằng 1 dòng trong file'), 'hộp xác nhận: ' + xn);
+    await p.click('#hop button:has-text("Nhập")');
+    await hopCo(p, 'Kết quả');
+    ok(ssDot01() === 'CHAN|00123|15/03/2027|120,CHAN|L2||30.5,LE|V1|15/04/2027|7', 'kk.so_sanh: ' + ssDot01());
+    await p.click('#hop button:has-text("Đóng")');
+    ok(await dem(p) === '3 / 3', 'số đếm: ' + await dem(p));
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_kho_sau_loi', async () => {
+    const truoc = ssDot01();
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.setInputFiles('#fileNhap', SS_KHO_SAU_LOI);
+    await hopCo(p, 'Dòng 3');
+    const kq = await p.textContent('#hop');
+    ok(kq.includes('Dòng 3: HSD không hợp lệ: 31/02/2027') && !/thay/.test(kq), 'kết quả: ' + kq);
+    ok(ssDot01() === truoc, 'số liệu so sánh đổi dù có dòng lỗi: ' + ssDot01());
+    ok(goiCo(p, 'nhapSoSanh').every(b => b.includes('"chiKiem":true')), 'đã gửi lần ghi thật');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_xuat_nhap_lai', async () => {
+    const truoc = ssDot01();
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    ok(await p.inputValue('#locKhoSs') === '', 'ô kho không ở Tất cả');
+    const { file, ten } = await taiVe(p, '#bang button:has-text("Xuất danh sách hiện có")', 'ss-xuat.xlsx');
+    ok(ten === 'SO-SANH-Đợt thử.xlsx', 'tên file: ' + ten);
+    await p.setInputFiles('#fileNhap', file);
+    await hopCo(p, 'thay');
+    ok((await p.textContent('#hop')).includes('Kho CHAN: thay 2 dòng đang có bằng 2 dòng trong file'), 'hộp xác nhận: ' + await p.textContent('#hop'));
+    await p.click('#hop button:has-text("Nhập")');
+    await hopCo(p, 'Kết quả');
+    ok(ssDot01() === truoc, 'số liệu đổi sau khi xuất rồi nhập lại: ' + ssDot01() + ' / ' + truoc);
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_nham_file_danh_muc', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    const { file } = await taiVe(p, '#bang button:has-text("Tải file mẫu")', 'dm-mau-cho-ss.xlsx');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.setInputFiles('#fileNhap', file);
+    await hopCo(p, 'File không đúng mẫu số liệu so sánh');
+    ok(!goiCo(p, 'nhapSoSanh').length, 'đã gửi nhapSoSanh với file danh mục');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_con_dong_vi_du', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    const { file, ten } = await taiVe(p, '#bang button:has-text("Tải file mẫu")', 'ss-mau.xlsx');
+    ok(ten === 'SO-SANH-MAU.xlsx', 'tên file mẫu: ' + ten);
+    await p.setInputFiles('#fileNhap', file);
+    await hopCo(p, 'Dòng 2');
+    ok(!goiCo(p, 'nhapSoSanh').length, 'đã gửi nhapSoSanh dù còn dòng ví dụ');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_huy_xac_nhan', async () => {
+    const truoc = ssDot01();
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.setInputFiles('#fileNhap', SS_HAI_KHO);
+    await hopCo(p, 'thay');
+    await p.click('#hop button:has-text("Huỷ")');
+    await p.waitForTimeout(500);
+    const g = goiCo(p, 'nhapSoSanh');
+    ok(g.length === 1 && g[0].includes('"chiKiem":true'), 'yêu cầu nhapSoSanh: ' + g.length);
+    ok(ssDot01() === truoc, 'bấm Huỷ mà số liệu vẫn đổi');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_mang_rot_khi_ghi', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.route('**/rpc/api', r => {
+      const b = r.request().postData() || '';
+      return b.includes('"action":"nhapSoSanh"') && !b.includes('"chiKiem":true') ? r.abort() : r.continue();
+    });
+    await p.setInputFiles('#fileNhap', SS_HAI_KHO);
+    await hopCo(p, 'thay');
+    const ds = goiCo(p, 'dsSoSanh').length;
+    await p.click('#hop button:has-text("Nhập")');
+    await hopCo(p, 'Không rõ đã nhập xong chưa');
+    ok(goiCo(p, 'dsSoSanh').length > ds, 'không tải lại bảng sau khi mạng rớt');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_dot_dong_an_nut', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.selectOption('#dot', 'DOT02');
+    await p.waitForFunction(() => document.body.dataset.dong === '1' && document.querySelector('#bang .dem'), null, { timeout: 10000 });
+    ok(!await p.isVisible('#btnNhap'), 'đợt đã đóng mà còn nút Nhập từ Excel');
+    ok(await p.isVisible('#bang button:has-text("Xuất danh sách hiện có")') && await p.isVisible('#bang button:has-text("Tải file mẫu")'), 'mất nút xuất hoặc file mẫu');
+    sachLoi(p);
+    await p.context().close();
+  });
+
   // ------------------------------------------------------------ không còn đợt nào (chạy cuối vì xoá mọi đợt)
   await run('hoc_chua_co_dot', async () => {
     sql('delete from kk.so_sanh; delete from kk.dong; delete from kk.thuoc_moi; delete from kk.dot_kho; delete from kk.hoc; delete from kk.dot');
@@ -432,6 +571,8 @@ try {
     await moMuc(p, 'Kho và hộc');
     ok(/Chưa có đợt kiểm/.test(await p.textContent('#phanHoc')), 'phần hộc: ' + await p.textContent('#phanHoc'));
     ok(await p.locator('#dsKho tbody tr').count() >= 2, 'bảng Kho không hiện');
+    await p.click('#menu button:has-text("Số liệu so sánh")');
+    await p.waitForFunction(() => /Chưa có đợt kiểm/.test(document.getElementById('bang').textContent), null, { timeout: 10000 });
     sachLoi(p);
     await p.context().close();
   });
