@@ -1,13 +1,13 @@
 // E2E smoke test: the real app (static server on :8765) against the local Supabase stack.
 // Run from the repo root after `supabase db reset`:  node tests/e2e/smoke.mjs
 import { chromium } from 'playwright';
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 
 const PORT = 8765, BASE = `http://127.0.0.1:${PORT}/`;
 const env = Object.fromEntries(execSync('supabase status -o env 2>/dev/null', { encoding: 'utf8' })
   .split('\n').map(l => l.match(/^(\w+)="?(.*?)"?$/)).filter(Boolean).map(m => [m[1], m[2]]));
 const CONFIG_JS = `window.KK_CONFIG = ${JSON.stringify({ SUPABASE_URL: env.API_URL, SUPABASE_KEY: env.ANON_KEY })};`;
-const sql = q => execSync(`docker exec supabase_db_kiem_kho psql -U postgres -At -c "${q}"`, { encoding: 'utf8' }).trim();
+const sql = q => execFileSync('docker', ['exec', 'supabase_db_kiem_kho', 'psql', '-U', 'postgres', '-At', '-c', q], { encoding: 'utf8' }).trim();
 
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
 const browser = await chromium.launch({ channel: 'chrome' });
@@ -23,7 +23,7 @@ async function newPage() {
   return page;
 }
 // Log in and answer the đợt / kho / hộc dialogs until the main screen is ready.
-async function vao(page, pin, hoc = 'A 1') {
+async function vao(page, pin, hoc = 'A 1', kho = 'Kho CHẴN') {
   await page.fill('#pin', pin);
   await page.click('#btnLogin');
   for (let i = 0; i < 6; i++) {
@@ -32,7 +32,7 @@ async function vao(page, pin, hoc = 'A 1') {
     if (await page.locator('#modal.hidden').count()) return;
     const title = await page.textContent('#mTitle');
     if (/^Chọn đợt/.test(title)) await page.click('#mBtns button:has-text("Đợt thử")');
-    else if (/^Đang kiểm kho/.test(title)) await page.click('#mBtns button:has-text("Kho CHẴN")');
+    else if (/^Đang kiểm kho/.test(title)) await page.click(`#mBtns button:has-text("${kho}")`);
     else if (/^Chọn hộc/.test(title)) { await page.fill('#hocIn', hoc); await page.click('#mBtns button'); }
     else throw new Error('Hộp thoại lạ: ' + title);
     await page.waitForTimeout(150);
@@ -120,6 +120,28 @@ try {
     await p.waitForFunction(() => /Kiểm kho thử 11\/2026/.test(document.getElementById('qlDot').textContent), null, { timeout: 10000 });
     ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
     await p.context().close();
+  });
+
+  await run('xss_ten_kho', async () => {
+    const evil = '<img src=x onerror="window.__x=1">';
+    sql(`update kk.kho set ten_ngan = $x$${evil}$x$ where ma = 'CHAN'`);
+    try {
+      const p = await newPage();
+      await vao(p, '444444', 'A 1', 'Kho <img');                  // kho button text shows the name literally
+      await p.fill('#q', 'vitamin');
+      await p.click('.res[data-ma="TT-0009"]');                  // kho_mac_dinh = LE, counting in CHAN
+      await p.fill('#lo', 'X1');
+      await p.fill('#hsd', '15032027');
+      await p.fill('#le', '5');
+      await p.click('.act.main');
+      await p.waitForSelector('#mTitle:has-text("Thuốc của kho")', { timeout: 10000 });
+      ok(await p.locator('#mBody img, #btnKho img, #dWarn img').count() === 0, 'tên kho tạo ra thẻ img');
+      ok((await p.textContent('#mBody')).includes(evil), 'chữ thẻ không hiện nguyên văn trong hộp thoại');
+      ok((await p.innerHTML('#btnKho')).includes('&lt;img'), 'nút Kho không được escape');
+      ok(await p.evaluate(() => window.__x) === undefined, 'mã đã chạy (window.__x)');
+      ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+      await p.context().close();
+    } finally { sql("update kk.kho set ten_ngan = 'CHẴN' where ma = 'CHAN'"); }
   });
 
   await run('do_toc_do', async () => {

@@ -294,7 +294,7 @@ async function chooseKho(auto) {
 const HOC_ST_TEN = { CHUA_NHAN: 'Chưa ai nhận', DANG_DEM: 'Đang đếm', XONG: 'Đã xong' };
 async function chooseHoc() {
   const recent = LS.get('hocs', []);
-  const chip = x => `<button class="hocchip ${x.st || ''}" data-h="${esc(x.hoc)}"><b>${esc(x.hoc)}</b>${x.st ? `<span>${x.st === 'XONG' ? 'xong · ' + esc(x.nguoiXong || '') : x.st === 'DANG_DEM'
+  const chip = x => `<button class="hocchip ${esc(x.st || '')}" data-h="${esc(x.hoc)}"><b>${esc(x.hoc)}</b>${x.st ? `<span>${x.st === 'XONG' ? 'xong · ' + esc(x.nguoiXong || '') : x.st === 'DANG_DEM'
     ? esc((x.nguoiDem && x.nguoiDem.length ? x.nguoiDem : String(x.nguoi || '').split(', ')).filter(Boolean).join(', ') || 'đang đếm') + (x.soDong ? ' · ' + x.soDong + ' dòng' : '') : 'chưa ai nhận'}</span>` : ''}</button>`;
   const bindChips = () => document.querySelectorAll('#mBody [data-h]').forEach(b => b.onclick = () => { $('hocIn').value = b.dataset.h; $('mBtns').firstChild.click(); });
   const recentHtml = recent.length ? '<div class="muted small mb-1.5 mt-3">Gần đây</div><div class="flex flex-wrap gap-1.5">' + recent.map(h => chip({ hoc: h })).join('') + '</div>' : '';
@@ -584,7 +584,7 @@ async function save(thaoTac) {
     if (!ok) { $('qc').focus(); return; }
   }
   if (d.kho && d.kho !== S.kho) {
-    const ok = await ask('Thuốc của kho ' + KHO_TEN[d.kho], `<p>Danh mục ghi <b>${esc(d.ten)}</b> thuộc kho ${esc(KHO_TEN[d.kho])}. Bạn chắc chắn hàng này đang nằm ở kho ${KHO_TEN[S.kho]}?</p>`,
+    const ok = await ask('Thuốc của kho ' + KHO_TEN[d.kho], `<p>Danh mục ghi <b>${esc(d.ten)}</b> thuộc kho ${esc(KHO_TEN[d.kho])}. Bạn chắc chắn hàng này đang nằm ở kho ${esc(KHO_TEN[S.kho])}?</p>`,
       [{ text: 'Đúng, đang ở kho ' + KHO_TEN[S.kho], cls: 'primary', value: true }, { text: 'Huỷ', value: false }]);
     if (!ok) return;
   }
@@ -709,11 +709,11 @@ async function loadToi() {
   let html = local.map(it => {
     const p = it.payload;
     const btns = it.state === 'need'
-      ? (it.need === 'CUNG_HOC' ? `<button class="btn small primary" data-q="okCungHoc" data-r="${it.reqId}">Hàng khác – vẫn cộng</button>` : '')
-        + (it.need === 'HSD_KHAC' ? `<button class="btn small primary" data-q="okHsd" data-r="${it.reqId}">Vẫn lưu HSD này</button>` : '')
-        + `<button class="btn small danger" data-q="drop" data-r="${it.reqId}">Bỏ dòng này</button>`
-      : it.state === 'error' ? `<button class="btn small" data-q="retry" data-r="${it.reqId}">Gửi lại</button><button class="btn small danger" data-q="drop" data-r="${it.reqId}">Bỏ</button>` : '';
-    const edit = it.state !== 'sending' ? `<button class="btn small" data-q="edit" data-r="${it.reqId}">${ico('rotate')}Sửa</button>` : '';
+      ? (it.need === 'CUNG_HOC' ? `<button class="btn small primary" data-q="okCungHoc" data-r="${esc(it.reqId)}">Hàng khác – vẫn cộng</button>` : '')
+        + (it.need === 'HSD_KHAC' ? `<button class="btn small primary" data-q="okHsd" data-r="${esc(it.reqId)}">Vẫn lưu HSD này</button>` : '')
+        + `<button class="btn small danger" data-q="drop" data-r="${esc(it.reqId)}">Bỏ dòng này</button>`
+      : it.state === 'error' ? `<button class="btn small" data-q="retry" data-r="${esc(it.reqId)}">Gửi lại</button><button class="btn small danger" data-q="drop" data-r="${esc(it.reqId)}">Bỏ</button>` : '';
+    const edit = it.state !== 'sending' ? `<button class="btn small" data-q="edit" data-r="${esc(it.reqId)}">${ico('rotate')}Sửa</button>` : '';
     return `<div class="item"><div class="h"><span>${esc(it.ten)}</span><span class="st ${it.state}">${ST_TEN[it.state]}</span></div>
       <div class="s">${p.dot && p.dot !== S.dot ? '<b>' + esc(dotTen(p.dot)) + '</b> · ' : ''}Kho ${esc(KHO_TEN[p.kho])} · ${esc(p.hoc)} · lô ${esc(p.lo)} · ${esc(p.hsd)} · <b>${fmtN(it.sl)} ${esc(p.dvt)}</b></div>
       ${it.error ? `<div class="s text-red-600">${esc(it.error)}</div>` : ''}<div class="b">${edit}${btns}</div></div>`;
@@ -818,7 +818,7 @@ async function loadQl() {
       <b>${r.soMa}</b> mã · ${r.soDong} dòng<br><span class="muted small">${r.soVoi && r.lan1 ? esc(r.soVoi) + ' có ' + r.lan1 + ' mã – đợt này đã đếm ' + r.lan1DaDemLai : 'Không có số liệu so sánh'}${r.choDuyet ? ' · ' + r.choDuyet + ' chờ duyệt' : ''}</span></div>` : `<div class="box">${esc(r.error)}</div>`; }).join('');
     $('qlKho').innerHTML = isIT() && S.dotInfo.st === 'MO' ? ks.map((k, i) => {
       const r = rs[i], chot = r.ok && r.trangThai === 'DA_CHOT';
-      return `<button class="btn ${chot ? 'ok' : 'danger'}" data-kho="${k}" data-tt="${chot ? 'DANG_KIEM' : 'DA_CHOT'}">${chot ? ico('unlock') + 'Mở lại kho ' : ico('lock') + 'Chốt kho '}${esc(KHO_TEN[k])}</button>`;
+      return `<button class="btn ${chot ? 'ok' : 'danger'}" data-kho="${esc(k)}" data-tt="${chot ? 'DANG_KIEM' : 'DA_CHOT'}">${chot ? ico('unlock') + 'Mở lại kho ' : ico('lock') + 'Chốt kho '}${esc(KHO_TEN[k])}</button>`;
     }).join('') : '';
   } catch (e) { $('qlProg').innerHTML = `<div class="box">${esc(e.message)}</div>`; }
   // tiến độ hộc
@@ -936,7 +936,7 @@ $('tab-ql').addEventListener('click', async e => {
   try {
     if (t.dataset.open) { switchTab('dem'); selectDrug(t.dataset.open); return; }
     if (t.dataset.gop) {
-      const ok = await ask('Gộp lô', `<p>Chuyển mọi dòng lô <b>${esc(t.dataset.bo)}</b> sang lô <b>${esc(t.dataset.giu)}</b> (mã ${esc(t.dataset.gop)}, kho ${KHO_TEN[S.kho]})?</p>`,
+      const ok = await ask('Gộp lô', `<p>Chuyển mọi dòng lô <b>${esc(t.dataset.bo)}</b> sang lô <b>${esc(t.dataset.giu)}</b> (mã ${esc(t.dataset.gop)}, kho ${esc(KHO_TEN[S.kho])})?</p>`,
         [{ text: 'Gộp', cls: 'primary', value: true }, { text: 'Huỷ', value: false }]);
       if (!ok) return;
       const r = await api('gopLo', { kho: S.kho, ma: t.dataset.gop, loGiu: t.dataset.giu, loBo: t.dataset.bo }); if (!r.ok) throw new Error(r.error);
