@@ -124,7 +124,11 @@ async function veTaiKhoan() {
   await taiTaiKhoan();
 }
 async function taiTaiKhoan() {
-  try { TK.list = (await goi('dsTaiKhoan')).list; } catch (e) { $('ds').innerHTML = `<p class="msg">${esc(e.message)}</p>`; return; }
+  let r;
+  try { r = await goi('dsTaiKhoan'); } catch (e) { r = e; }
+  if (mucMo !== 'taiKhoan') return;                             // IT moved to another section while waiting
+  if (r instanceof Error) return void ($('ds').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  TK.list = r.list;
   TK.key = TK.list.map(t => norm(t.tk + ' ' + t.ten + ' ' + t.ghiChu));
   veBangTk();
 }
@@ -160,10 +164,81 @@ async function sauKhiLuuTk(tk) {
   if (t && mucMo === 'taiKhoan') suaTaiKhoan(t);
 }
 
+// ===================================================================== Danh mục thuốc
+const DM = { list: [], key: [], chon: '', khos: [] };
+const dongLoi = (loi, so) => loi.length ? '<p class="msg">' + loi.map(x => `Dòng ${esc(so ? so[x.dong - 1] : x.dong)}: ${esc(x.error)}`).join('<br>') + '</p>' : '';
+const ketQua = html => hoi('Kết quả nhập', html, [{ text: 'Đóng', value: true, cls: 'primary' }]);
+/** Hidden file input behind a "Nhập từ Excel" button; nhap(file) runs on pick, its Error is shown in a dialog. */
+const nutNhap = cls => `<button type="button" id="btnNhap" class="btn ${cls || ''}">Nhập từ Excel</button><input type="file" id="fileNhap" accept=".xlsx,.xls" class="hidden">`;
+function ganNhap(nhap) {
+  $('btnNhap').onclick = () => $('fileNhap').click();
+  $('fileNhap').onchange = async () => {
+    const f = $('fileNhap').files[0];
+    $('fileNhap').value = '';                                      // the same file can be picked again
+    if (f) try { await nhap(f); } catch (e) { await baoLoi(e); }
+  };
+}
+async function veDanhMuc() {
+  $('bang').innerHTML = `<div class="cong-cu">${oTim()}<span id="locKhoO"></span>
+    <button type="button" id="btnThem" class="btn primary">Thêm</button><button type="button" id="btnMau" class="btn">Tải file mẫu</button>
+    <button type="button" id="btnXuat" class="btn">Xuất danh sách hiện có</button>${nutNhap()}</div><div id="ds"></div>`;
+  $('tim').oninput = veBangDm;
+  $('btnThem').onclick = () => suaThuoc(null);
+  $('btnMau').onclick = () => taiFile(soDanhMuc([VIDU_DANH_MUC]), 'DANH-MUC-MAU.xlsx').catch(baoLoi);
+  $('btnXuat').onclick = () => taiFile(soDanhMuc(DM.list), 'DANH-MUC.xlsx').catch(baoLoi);
+  ganNhap(nhapDanhMuc);
+  await taiDanhMuc();
+}
+async function taiDanhMuc() {
+  let r, k;
+  try { [r, k] = await Promise.all([goi('danhMuc', { v: '' }), goi('dsKho')]); } catch (e) { r = e; }
+  if (mucMo !== 'danhMuc') return;
+  if (r instanceof Error) return void ($('ds').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  DM.list = r.list; DM.khos = k.list;
+  DM.key = DM.list.map(t => norm(t[0] + ' ' + t[1] + ' ' + t[6]));      // computed once per load, not per keystroke
+  if (!$('locKho')) {
+    $('locKhoO').innerHTML = locChon('locKho', 'Mọi kho mặc định', DM.khos.map(x => [x.ma, x.tenNgan]));
+    $('locKho').onchange = veBangDm;
+  }
+  veBangDm();
+}
+function veBangDm() {
+  if (!$('ds')) return;
+  const q = norm($('tim').value.trim()), kho = $('locKho') ? $('locKho').value : '';
+  veBang($('ds'), ['Mã', 'Tên thuốc', 'ĐVT nhập', 'Quy cách', 'ĐVT nhỏ nhất', 'Kho mặc định', 'Mã vạch GTIN'], DM.list,
+    i => (!q || DM.key[i].includes(q)) && (!kho || DM.list[i][5] === kho), i => suaThuoc(DM.list[i]), DM.list.findIndex(t => t[0] === DM.chon));
+}
+function suaThuoc(t) {
+  DM.chon = t ? t[0] : '';
+  const dvt = (S.user && S.user.dvt) || [], dvts = t && t[4] && !dvt.includes(t[4]) ? dvt.concat(t[4]) : dvt;
+  moKhung(t ? 'Sửa thuốc' : 'Thêm thuốc',
+    oNhap('oMa', 'Mã', t ? t[0] : '', t ? ' readonly' : '') + oNhap('oTen', 'Tên thuốc', t ? t[1] : '') + oNhap('oDvtn', 'ĐVT nhập', t ? t[2] : '')
+    + oNhap('oQc', 'Quy cách', t ? t[3] : '', ' inputmode="decimal"') + oChon('oDvt', 'ĐVT nhỏ nhất', dvts.map(x => [x, x]), t ? t[4] : dvts[0])
+    + oChon('oKho', 'Kho mặc định', [['', '']].concat(DM.khos.map(x => [x.ma, x.tenNgan])), t ? t[5] : '') + oNhap('oGtin', 'Mã vạch GTIN', t ? t[6] : ''),
+    async () => {
+      const ma = $('oMa').value.trim();
+      await goi('luuThuoc', { ma, ten: $('oTen').value.trim(), dvtn: $('oDvtn').value.trim(), qc: $('oQc').value.trim(), dvt: $('oDvt').value,
+        kho: $('oKho').value, gtin: $('oGtin').value.trim() });
+      DM.chon = ma;
+      await taiDanhMuc();
+      const x = DM.list.find(y => y[0] === ma);
+      if (x && mucMo === 'danhMuc') suaThuoc(x);
+    });
+}
+async function nhapDanhMuc(f) {
+  const { tieuDe, list, so } = await qtDocExcel(f);
+  if (!dungTieuDe(tieuDe, DANH_MUC_MAU_HEADER)) throw new Error('File không đúng mẫu danh mục');
+  const vd = timDongViDu(list, so, 0);
+  if (vd) throw new Error('Dòng ' + vd + ' là dòng ví dụ của file mẫu');
+  const r = await goi('nhapThuoc', { list }, 180000);
+  await taiDanhMuc();
+  await ketQua(`<p>Thêm ${r.them} · Sửa ${r.sua} · Lỗi ${r.loi.length}</p>` + dongLoi(r.loi, so));
+}
+
 // ===================================================================== menu: [key, label, draw()]
 const MUC = [
   ['taiKhoan', 'Tài khoản', veTaiKhoan],
-  ['danhMuc', 'Danh mục thuốc', async () => {}],
+  ['danhMuc', 'Danh mục thuốc', veDanhMuc],
   ['kho', 'Kho và hộc', async () => {}],
   ['soSanh', 'Số liệu so sánh', async () => {}],
   ['dot', 'Đợt kiểm', async () => {}],

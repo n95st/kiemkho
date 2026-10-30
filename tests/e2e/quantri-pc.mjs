@@ -20,6 +20,18 @@ ws = load_workbook(sys.argv[1]).worksheets[0]
 for r in ws.iter_rows(values_only=True): print('|'.join('' if c is None else str(c) for c in r))
 `, file], { encoding: 'utf8' }).trim().split('\n');
 
+// Test workbooks (openpyxl): a comparison file, used where a danh mục file is expected
+const XLSX_SS = join(dir, 'so-sanh.xlsx');
+execFileSync('python3', ['-c', `
+import sys, datetime
+from openpyxl import Workbook
+wb = Workbook(); ws = wb.active
+ws.append(['Kho', 'Mã', 'Tên', 'Số lô', 'HSD', 'SL', 'ĐVT', 'Hộc', 'Người đếm'])
+ws.append(['CHAN', 'TT-0001', 'Paracetamol 500mg', 'L1', datetime.date(2027, 3, 15), 120, 'Viên', 'A 1', 'Lan'])
+wb.save(sys.argv[1])
+`, XLSX_SS]);
+const goiCo = (p, action) => p.goiApi.filter(b => b.includes(`"action":"${action}"`));
+
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
 const browser = await chromium.launch({ channel: 'chrome' });
 let fails = 0;
@@ -221,6 +233,121 @@ try {
     await p.click('#ds tbody tr:has-text("TK05")');
     const w = await p.evaluate(() => document.documentElement.scrollWidth);
     ok(w <= 390, 'trang rộng ' + w + ' px trên màn 390 px');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  // ------------------------------------------------------------ danh mục thuốc
+  await run('danh_muc_dem_dong', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    const n = sql('select count(*) from kk.thuoc');
+    ok(await dem(p) === `${n} / ${n}`, 'số đếm: ' + await dem(p));
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('danh_muc_tim_khong_dau', async () => {
+    sql("insert into kk.thuoc (ma, ten, dvt_nhap, quy_cach, dvt) values ('PC-1', 'Thuốc Đau Đầu', 'Hộp', 10, 'Viên')");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    await p.fill('#tim', 'dau dau');
+    const ma = await p.$$eval('#ds tbody tr', rs => rs.map(r => r.cells[0].textContent));
+    ok(ma.includes('PC-1'), 'tìm "dau dau" không ra PC-1: ' + ma);
+    ok(await dem(p) === `${ma.length} / ${sql('select count(*) from kk.thuoc')}`, 'số đếm sau tìm: ' + await dem(p));
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('danh_muc_sua_thuoc', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    await p.click('#ds tbody tr:has-text("PC-1")');
+    ok(await p.getAttribute('#oMa', 'readonly') !== null, 'ô Mã sửa được khi sửa thuốc');
+    await p.fill('#oTen', 'Thuốc Đau Đầu Mới');
+    await p.click('#khung button:has-text("Lưu")');
+    await p.waitForFunction(() => /Thuốc Đau Đầu Mới/.test(document.getElementById('ds').textContent), null, { timeout: 10000 });
+    ok(sql("select ten from kk.thuoc where ma = 'PC-1'") === 'Thuốc Đau Đầu Mới', 'tên thuốc chưa lưu');
+    ok(/PC-1/.test(await p.textContent('#ds tr.chon')), 'dòng PC-1 không còn được chọn');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('danh_muc_xuat_nhap_lai', async () => {
+    sql("insert into kk.thuoc (ma, ten, dvt_nhap, quy_cach, dvt, kho_mac_dinh, gtin) values ('00045', 'Thuốc số không', 'Hộp', 20, 'Viên', 'LE', '{0893456789012}')");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    const { file, ten } = await taiVe(p, '#bang button:has-text("Xuất danh sách hiện có")', 'danh-muc-xuat.xlsx');
+    ok(ten === 'DANH-MUC.xlsx', 'tên file: ' + ten);
+    await p.setInputFiles('#fileNhap', file);
+    await p.waitForFunction(() => /Thêm/.test(document.getElementById('hop').textContent), null, { timeout: 20000 });
+    const kq = await p.textContent('#hop');
+    ok(/Thêm 0/.test(kq) && /Lỗi 0/.test(kq), 'kết quả nhập lại: ' + kq);
+    ok(sql("select array_to_string(gtin, ' ') || '|' || quy_cach || '|' || kho_mac_dinh from kk.thuoc where ma = '00045'") === '0893456789012|20|LE', 'thuốc 00045 đổi sau khi nhập lại');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('danh_muc_con_dong_vi_du', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    const { file, ten } = await taiVe(p, '#bang button:has-text("Tải file mẫu")', 'danh-muc-mau.xlsx');
+    ok(ten === 'DANH-MUC-MAU.xlsx', 'tên file mẫu: ' + ten);
+    await p.setInputFiles('#fileNhap', file);
+    await p.waitForFunction(() => /Dòng 2/.test(document.getElementById('hop').textContent), null, { timeout: 10000 });
+    ok(!goiCo(p, 'nhapThuoc').length, 'đã gửi nhapThuoc dù còn dòng ví dụ');
+    ok(sql("select count(*) from kk.thuoc where ma = 'VIDU'") === '0', 'thuốc VIDU vào danh mục');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('danh_muc_nham_file_so_sanh', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    await p.setInputFiles('#fileNhap', XLSX_SS);
+    await p.waitForFunction(() => /File không đúng mẫu danh mục/.test(document.getElementById('hop').textContent), null, { timeout: 10000 });
+    ok(!goiCo(p, 'nhapThuoc').length, 'đã gửi nhapThuoc với file số liệu so sánh');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('xss_ten_thuoc_pc', async () => {
+    const evil = '<img src=x onerror="window.__x=1">';
+    sql(`insert into kk.thuoc (ma, ten, dvt) values ('XSS-PC', '${evil}', 'Viên')`);
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    await p.fill('#tim', 'XSS-PC');
+    ok((await p.textContent('#ds')).includes(evil), 'chữ thẻ không hiện nguyên văn trong bảng');
+    await p.click('#ds tbody tr:has-text("XSS-PC")');
+    ok(await p.inputValue('#oTen') === evil, 'ô Tên thuốc không giữ nguyên chữ');
+    ok(await p.locator('#bang img, #khung img').count() === 0, 'trang tạo ra thẻ img');
+    ok(await p.evaluate(() => window.__x) === undefined, 'mã đã chạy (window.__x)');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('danh_muc_5000_dong', async () => {
+    sql("insert into kk.thuoc (ma, ten, dvt_nhap, dvt) select 'G' || lpad(i::text, 5, '0'), 'Thuốc thử ' || i, 'Hộp', 'Viên' from generate_series(1, 5000) i");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Danh mục thuốc');
+    const n = Number(sql('select count(*) from kk.thuoc'));
+    ok(await dem(p) === `${n.toLocaleString('vi-VN')} / ${n.toLocaleString('vi-VN')}`, 'số đếm: ' + await dem(p));
+    const kq = await p.evaluate(() => {
+      const o = document.getElementById('tim'), truoc = document.querySelector('#bang .dem').textContent, t0 = performance.now();
+      o.value = 'thu 4999';
+      o.dispatchEvent(new Event('input'));
+      return { ms: performance.now() - t0, truoc, sau: document.querySelector('#bang .dem').textContent };
+    });
+    ok(kq.sau !== kq.truoc && /^1 \//.test(kq.sau), 'số đếm không đổi khi gõ: ' + JSON.stringify(kq));
+    ok(kq.ms < 150, 'gõ tìm mất ' + Math.round(kq.ms) + ' ms');
     sachLoi(p);
     await p.context().close();
   });
