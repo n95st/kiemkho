@@ -146,6 +146,7 @@ python3 tools/test_nhap_tu_google_sheet.py
 node tests/e2e/smoke.mjs                         # cần Google Chrome
 node tests/e2e/quantri.mjs                       # cần Google Chrome
 node tests/e2e/quantri-pc.mjs                    # cần Google Chrome
+node tests/e2e/dem.mjs                           # cần Google Chrome; các tình huống đếm bấm thật trên app
 ```
 
 Ghi chú:
