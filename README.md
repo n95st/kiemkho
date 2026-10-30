@@ -127,9 +127,10 @@ TZ=Asia/Ho_Chi_Minh node --test tests/mauexcel.test.mjs
 python3 tools/test_nhap_tu_google_sheet.py
 node tests/e2e/smoke.mjs                         # cần Google Chrome
 node tests/e2e/quantri.mjs                       # cần Google Chrome
+node tests/e2e/quantri-pc.mjs                    # cần Google Chrome
 ```
 
 Ghi chú:
 
 - Với `node --test`, phải liệt kê tên file như trên. Dạng chỉ thư mục (`node --test tests/`) báo lỗi trên Node 26.
-- Hai bài `tests/e2e/*.mjs` ghi vào cơ sở dữ liệu local. Chạy xong hãy chạy `supabase db reset` để trả về trạng thái sạch.
+- Các bài `tests/e2e/*.mjs` ghi vào cơ sở dữ liệu local. Chạy xong hãy chạy `supabase db reset` để trả về trạng thái sạch.

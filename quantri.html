@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quản trị kiểm kho</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css?v=11">
+<style>
+  .qt-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; border-bottom: 1px solid #e4e4e7; background: #fff; }
+  .qt-top h1 { font-weight: 600; margin-right: auto; }
+  .qt-top select { width: auto; max-width: 100%; height: 36px; }
+  .qt { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; padding: 16px; align-items: start; }
+  .qt.co-khung { grid-template-columns: 180px minmax(0, 1fr) 340px; }
+  @media (max-width: 900px) { .qt, .qt.co-khung { grid-template-columns: minmax(0, 1fr); } }
+  #menu { display: flex; flex-direction: column; gap: 4px; }
+  @media (max-width: 900px) { #menu { flex-direction: row; flex-wrap: wrap; } }
+  #menu button { justify-content: flex-start; }
+  #menu button.on { background: #18181b; border-color: #18181b; color: #fff; }
+  #bang { min-width: 0; overflow-x: auto; }
+  .cong-cu { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cong-cu input, .cong-cu select { width: auto; max-width: 100%; height: 40px; }
+  .dem { font-size: 13px; color: #71717a; margin: 4px 0; }
+  table.ds { width: 100%; border-collapse: collapse; background: #fff; font-size: 13.5px; }
+  table.ds th { position: sticky; top: 0; background: #f4f4f5; text-align: left; font-weight: 600; }
+  table.ds th, table.ds td { padding: 6px 8px; border-bottom: 1px solid #e4e4e7; white-space: nowrap; }
+  table.ds tbody tr { cursor: pointer; }
+  table.ds tbody tr:hover td { background: #fafafa; }
+  table.ds tbody tr.chon td { background: #dbeafe; }
+  #khung { min-width: 0; border: 1px solid #e4e4e7; border-radius: 12px; background: #fff; padding: 16px; }
+  #khung h2, #hop h2 { font-weight: 600; margin-bottom: 12px; }
+  .nut { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .muc-phu { margin-top: 24px; }
+  #hop { border: 1px solid #e4e4e7; border-radius: 12px; padding: 20px; width: min(440px, calc(100vw - 32px)); }
+  #hop::backdrop { background: rgb(0 0 0 / 0.3); }
+  #pinMoi { font-size: 30px; font-weight: 600; letter-spacing: 0.3em; text-align: center; }
+  body[data-dong="1"] .ghi-dot { display: none; }
+</style>
+</head>
+<body>
+
+<section id="login" class="screen">
+  <div class="login-box">
+    <h1>Quản trị kiểm kho</h1>
+    <input id="pin" class="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="Mã PIN">
+    <button id="btnLogin" class="btn primary big">Vào</button>
+    <p id="loginMsg" class="msg mt-3"></p>
+  </div>
+</section>
+
+<section id="main" class="hidden">
+  <header class="qt-top">
+    <h1>Quản trị kiểm kho</h1>
+    <select id="dot" aria-label="Đợt kiểm"></select>
+    <button id="btnThoat" class="btn small">Đăng xuất</button>
+  </header>
+  <div id="qt" class="qt">
+    <nav id="menu"></nav>
+    <main id="bang"></main>
+    <aside id="khung" class="hidden"></aside>
+  </div>
+</section>
+
+<dialog id="hop"></dialog>
+
+<script src="config.js?v=11"></script>
+<script src="chung.js?v=11"></script>
+<script src="xuatexcel.js?v=11"></script>
+<script src="quantri-pc.js?v=1"></script>
+</body>
+</html>
