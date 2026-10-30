@@ -351,6 +351,90 @@ try {
     sachLoi(p);
     await p.context().close();
   });
+
+  // ------------------------------------------------------------ kho và hộc
+  await run('kho_hien_kho_an', async () => {
+    sql("insert into kk.kho (ma, ten, ten_ngan, thu_tu, hoat_dong) values ('K9', 'Kho 9', 'K9', 7, false)");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Kho và hộc');
+    await p.click('#dsKho tbody tr:has-text("K9")');
+    ok(await p.inputValue('#oThuTu') === '7', 'ô Thứ tự: ' + await p.inputValue('#oThuTu'));
+    ok(!await p.isChecked('#oHd'), 'kho đã ẩn mà ô Đang dùng được chọn');
+    await p.check('#oHd');
+    await p.click('#khung button:has-text("Lưu")');
+    await p.waitForFunction(() => document.querySelector('#dsKho tr.chon') && /K9/.test(document.querySelector('#dsKho tr.chon').textContent), null, { timeout: 10000 });
+    ok(sql("select hoat_dong || '|' || thu_tu from kk.kho where ma = 'K9'") === 'true|7', 'kk.kho K9: ' + sql("select hoat_dong || '|' || thu_tu from kk.kho where ma = 'K9'"));
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('kho_an_kho_dang_dung_bao_loi', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Kho và hộc');
+    await p.click('#dsKho tbody tr:has-text("CHAN")');
+    await p.uncheck('#oHd');
+    await p.click('#khung button:has-text("Lưu")');
+    await p.waitForFunction(() => document.getElementById('khungLoi').textContent !== '', null, { timeout: 10000 });
+    ok((await p.textContent('#khungLoi')).includes('đang dùng trong đợt Đợt thử'), 'khungLoi: ' + await p.textContent('#khungLoi'));
+    ok(sql("select hoat_dong from kk.kho where ma = 'CHAN'") === 't', 'kho CHAN bị ẩn');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('hoc_dan_nhieu_dong', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Kho và hộc');
+    await p.selectOption('#khoHoc', 'CHAN');
+    await p.fill('#oHocMoi', 'P 1\nP 2\n\n P 3 ');
+    await p.click('#btnThemHoc');
+    await p.waitForFunction(() => /P 3/.test(document.getElementById('dsHoc').textContent), null, { timeout: 10000 });
+    ok(sql("select string_agg(hoc, ',' order by hoc) from kk.hoc where dot_id = 'DOT01' and kho = 'CHAN' and not tap") === 'P 1,P 2,P 3', 'kk.hoc: ' + sql("select string_agg(hoc, ',' order by hoc) from kk.hoc where dot_id = 'DOT01' and kho = 'CHAN' and not tap"));
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('hoc_xoa_chi_chua_nhan', async () => {
+    sql("update kk.hoc set trang_thai = 'DANG_DEM', nguoi = 'Lan' where dot_id = 'DOT01' and kho = 'CHAN' and hoc = 'P 2'");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Kho và hộc');
+    await p.waitForSelector('#dsHoc tbody tr:has-text("P 2")', { timeout: 10000 });
+    ok(await p.locator('#dsHoc tbody tr:has-text("P 2") button:has-text("Xoá")').count() === 0, 'hộc đang đếm có nút Xoá');
+    await p.click('#dsHoc tbody tr:has-text("P 1") button:has-text("Xoá")');
+    await p.click('#hop button:has-text("Xoá")');
+    await p.waitForFunction(() => !/P 1/.test(document.getElementById('dsHoc').textContent), null, { timeout: 10000 });
+    ok(sql("select count(*) from kk.hoc where dot_id = 'DOT01' and kho = 'CHAN' and hoc = 'P 1'") === '0', 'hộc P 1 chưa bị xoá');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('hoc_dot_dong_an_nut', async () => {
+    sql("insert into kk.hoc (dot_id, tap, kho, hoc) values ('DOT02', false, 'CHAN', 'Q 1')");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Kho và hộc');
+    await p.selectOption('#dot', 'DOT02');
+    await p.waitForSelector('#dsHoc tbody tr:has-text("Q 1")', { timeout: 10000 });
+    ok(!await p.isVisible('#btnThemHoc'), 'đợt đã đóng mà còn nút Thêm hộc');
+    ok(await p.locator('#dsHoc button:has-text("Xoá"):visible').count() === 0, 'đợt đã đóng mà còn nút Xoá');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  // ------------------------------------------------------------ không còn đợt nào (chạy cuối vì xoá mọi đợt)
+  await run('hoc_chua_co_dot', async () => {
+    sql('delete from kk.so_sanh; delete from kk.dong; delete from kk.thuoc_moi; delete from kk.dot_kho; delete from kk.hoc; delete from kk.dot');
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Kho và hộc');
+    ok(/Chưa có đợt kiểm/.test(await p.textContent('#phanHoc')), 'phần hộc: ' + await p.textContent('#phanHoc'));
+    ok(await p.locator('#dsKho tbody tr').count() >= 2, 'bảng Kho không hiện');
+    sachLoi(p);
+    await p.context().close();
+  });
 } finally {
   await browser.close();
   server.kill();

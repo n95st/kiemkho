@@ -235,11 +235,81 @@ async function nhapDanhMuc(f) {
   await ketQua(`<p>Thêm ${r.them} · Sửa ${r.sua} · Lỗi ${r.loi.length}</p>` + dongLoi(r.loi, so));
 }
 
+// ===================================================================== Kho và hộc
+const HOC_ST_TEN = { CHUA_NHAN: 'Chưa ai nhận', DANG_DEM: 'Đang đếm', XONG: 'Đã xong' };
+const KH = { list: [], chon: '', hoc: [], khoHoc: '' };
+const tenKho = ma => { const k = KH.list.find(x => x.ma === ma); return k ? k.tenNgan : ma; };
+const chuaCoDot = () => '<p class="muted">Chưa có đợt kiểm</p>';
+async function veKho() {
+  $('bang').innerHTML = `<div class="cong-cu"><button type="button" id="btnThem" class="btn primary">Thêm kho</button></div><div id="dsKho"></div><div id="phanHoc" class="muc-phu"></div>`;
+  $('btnThem').onclick = () => suaKho(null);
+  let r;
+  try { r = await goi('dsKho'); } catch (e) { r = e; }
+  if (mucMo !== 'kho') return;
+  if (r instanceof Error) return void ($('dsKho').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  KH.list = r.list;
+  veBangKho();
+  if (!S.dotInfo) return void ($('phanHoc').innerHTML = chuaCoDot());
+  const ks = S.dotInfo.kho;
+  if (!ks.includes(KH.khoHoc)) KH.khoHoc = ks[0];
+  $('phanHoc').innerHTML = `<div class="cong-cu">${oChon('khoHoc', 'Kho', ks.map(k => [k, tenKho(k)]), KH.khoHoc)}</div>
+    <div class="ghi-dot"><div class="field"><label for="oHocMoi">Hộc mới</label><textarea id="oHocMoi" rows="4" autocomplete="off"></textarea></div>
+    <button type="button" id="btnThemHoc" class="btn primary ghi-dot">Thêm hộc</button></div><div id="dsHoc" class="muc-phu"></div>`;
+  $('khoHoc').onchange = () => { KH.khoHoc = $('khoHoc').value; taiHoc(); };
+  $('btnThemHoc').onclick = themHoc;
+  $('dsHoc').onclick = e => { const b = e.target.closest('[data-xoa]'); if (b) xoaHoc(KH.hoc[b.dataset.xoa].hoc); };
+  await taiHoc();
+}
+function veBangKho() {
+  veBang($('dsKho'), ['Mã kho', 'Tên kho', 'Tên ngắn', 'Thứ tự', 'Đang dùng'],
+    KH.list.map(k => [k.ma, k.ten, k.tenNgan, String(k.thuTu), k.hoatDong ? 'Có' : 'Không']),
+    () => true, i => suaKho(KH.list[i]), KH.list.findIndex(k => k.ma === KH.chon));
+}
+function suaKho(k) {
+  KH.chon = k ? k.ma : '';
+  moKhung(k ? 'Sửa kho' : 'Thêm kho',
+    oNhap('oMa', 'Mã kho', k ? k.ma : '', k ? ' readonly' : '') + oNhap('oTen', 'Tên kho', k ? k.ten : '') + oNhap('oNgan', 'Tên ngắn', k ? k.tenNgan : '')
+    + oNhap('oThuTu', 'Thứ tự', k ? String(k.thuTu) : '', ' inputmode="numeric"') + oDanh('oHd', 'Đang dùng', k ? k.hoatDong : true),
+    async () => {
+      const ma = $('oMa').value.trim().toUpperCase();
+      await goi('luuKho', { ma, ten: $('oTen').value.trim(), tenNgan: $('oNgan').value.trim(), thuTu: $('oThuTu').value.trim(), hoatDong: $('oHd').checked });
+      KH.chon = ma;
+      await chonDot(S.dot);                                        // kho names and the đợt's kho list in S.user change too
+      const x = KH.list.find(y => y.ma === ma);
+      if (x && mucMo === 'kho') suaKho(x);
+    });
+}
+async function taiHoc() {
+  const kho = KH.khoHoc;
+  let r;
+  try { r = await goi('dsHoc', { kho }); } catch (e) { r = e; }
+  if (mucMo !== 'kho' || kho !== KH.khoHoc || !$('dsHoc')) return;
+  if (r instanceof Error) return void ($('dsHoc').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  KH.hoc = r.list;
+  veBang($('dsHoc'), ['Hộc', 'Trạng thái', 'Người đếm', 'Bắt đầu', 'Xong lúc', ''],
+    KH.hoc.map(h => [h.hoc, HOC_ST_TEN[h.st] || h.st, h.nguoi, h.batDau, h.xongLuc, '']), () => true, () => {}, -1);
+  $('dsHoc').querySelectorAll('tbody tr').forEach(tr => {
+    if (KH.hoc[tr.dataset.i].st === 'CHUA_NHAN') tr.lastChild.innerHTML = `<button type="button" class="btn small danger ghi-dot" data-xoa="${tr.dataset.i}">Xoá</button>`;
+  });
+}
+async function themHoc() {
+  const them = $('oHocMoi').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (!them.length) return;
+  try { await goi('luuHoc', { kho: KH.khoHoc, them }); } catch (e) { return baoLoi(e); }
+  $('oHocMoi').value = '';
+  await taiHoc();
+}
+async function xoaHoc(hoc) {
+  if (!await hoi('Xoá hộc ' + hoc + '?', '', [{ text: 'Xoá', value: true, cls: 'danger' }, { text: 'Huỷ', value: false, cls: 'ghost' }])) return;
+  try { await goi('luuHoc', { kho: KH.khoHoc, xoa: [hoc] }); } catch (e) { return baoLoi(e); }
+  await taiHoc();
+}
+
 // ===================================================================== menu: [key, label, draw()]
 const MUC = [
   ['taiKhoan', 'Tài khoản', veTaiKhoan],
   ['danhMuc', 'Danh mục thuốc', veDanhMuc],
-  ['kho', 'Kho và hộc', async () => {}],
+  ['kho', 'Kho và hộc', veKho],
   ['soSanh', 'Số liệu so sánh', async () => {}],
   ['dot', 'Đợt kiểm', async () => {}],
 ];
