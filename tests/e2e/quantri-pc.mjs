@@ -209,6 +209,26 @@ try {
     await p.context().close();
   });
 
+  await run('tai_khoan_tu_dat_lai_pin', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Tài khoản');
+    await p.click('#ds tbody tr:has-text("TK01")');
+    await p.click('#khung button:has-text("Đặt lại PIN")');
+    await p.click('#hop button:has-text("Đặt lại")');
+    await p.waitForSelector('#pinMoi', { timeout: 10000 });
+    const pin = (await p.textContent('#pinMoi')).trim();
+    await p.click('#hop button:has-text("Đóng")');
+    await p.click('#menu button:has-text("Danh mục thuốc")');
+    const moDuoc = await p.waitForSelector('#bang .dem', { timeout: 5000 }).then(() => true, () => false);
+    const nho = await p.evaluate(() => sessionStorage.getItem('kkqt_pin'));
+    sql("update kk.tai_khoan set pin = '111111' where tk = 'TK01'; delete from kk.pin_sai");
+    ok(moDuoc, 'sau khi tự đặt lại PIN, trang không mở được mục khác');
+    ok(nho === pin, 'trang không nhớ PIN mới của chính mình');
+    sachLoi(p);
+    await p.context().close();
+  });
+
   await run('tai_khoan_xuat_khong_pin', async () => {
     const p = await newPage();
     await vao(p, '111111');

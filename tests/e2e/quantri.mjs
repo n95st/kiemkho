@@ -255,6 +255,25 @@ try {
     await p.context().close();
   });
 
+  await run('tu_dat_lai_pin', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMan(p, 'qtTaiKhoan', 'Tài khoản');
+    await p.click('#mBody .qitem:has-text("TK01") [data-pick]');
+    await p.click('#mBtns button:has-text("Đặt lại PIN")');
+    await p.click('#mBtns button:has-text("Đặt lại")');
+    await p.waitForSelector('#qtPin', { timeout: 10000 });
+    const pin = (await p.textContent('#qtPin')).trim();
+    await dongHop(p);                                                 // back to the account list, loaded with the PIN in use
+    const vaoLai = await p.waitForFunction(() => document.getElementById('mTitle').textContent === 'Tài khoản' && /TK01/.test(document.getElementById('mBody').textContent), null, { timeout: 5000 }).then(() => true, () => false);
+    const luu = await p.evaluate(() => localStorage.getItem('kk_pin'));
+    sql("update kk.tai_khoan set pin = '111111' where tk = 'TK01'; delete from kk.pin_sai");
+    ok(vaoLai, 'sau khi tự đặt lại PIN, app không tải lại được danh sách tài khoản');
+    ok(luu === JSON.stringify(pin), 'app không nhớ PIN mới của chính mình');
+    ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+    await p.context().close();
+  });
+
   await run('dem_khong_thay_cau_hinh', async () => {
     const p = await newPage();
     await vao(p, '444444');

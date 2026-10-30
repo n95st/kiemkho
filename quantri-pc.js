@@ -154,7 +154,11 @@ function suaTaiKhoan(t) {
     });
   if (t) $('btnPin').onclick = async () => {
     if (!await hoi('Đặt lại PIN của ' + t.ten + '?', '', [{ text: 'Đặt lại', value: true, cls: 'danger' }, { text: 'Huỷ', value: false, cls: 'ghost' }])) return;
-    try { await hienPin(t.ten, (await goi('datLaiPin', { tk: t.tk })).pin); } catch (e) { $('khungLoi').textContent = e.message; }
+    try {
+      const pin = (await goi('datLaiPin', { tk: t.tk })).pin;
+      if (t.tk === S.user.tk) { S.pin = pin; pinNho.set(pin); }      // own PIN: keep working with the new one, not the stale one
+      await hienPin(t.ten, pin);
+    } catch (e) { $('khungLoi').textContent = e.message; }
   };
 }
 async function sauKhiLuuTk(tk) {

@@ -70,7 +70,9 @@ async function qtSuaTaiKhoan(t) {
   try {
     if (v === 'pin') {
       if (!await ask('Đặt lại PIN của ' + t.ten + '?', '', [{ text: 'Đặt lại', cls: 'danger', value: true }, { text: 'Huỷ', cls: 'ghost', value: false }])) return;
-      await qtHienPin(t.ten, (await qtGoi('datLaiPin', { tk: t.tk })).pin); return;
+      const pin = (await qtGoi('datLaiPin', { tk: t.tk })).pin;
+      if (t.tk === S.user.tk) { S.pin = pin; LS.set('pin', pin); }      // own PIN: keep working with the new one, not the stale one
+      await qtHienPin(t.ten, pin); return;
     }
     const r = await qtGoi('luuTaiKhoan', v);
     if (!t) await qtHienPin(r.taiKhoan.ten, r.taiKhoan.pin); else toast('Đã lưu', 'ok');
