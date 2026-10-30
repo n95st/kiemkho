@@ -15,12 +15,18 @@ const TONG_HOP_LO_HEADER = ['Kho', 'Mã', 'Tên', 'Số lô', 'HSD', 'SL', 'ĐVT
 
 // 0-based columns that hold an HSD date (written as a serial number) and a lot code (always text)
 const XL_COT_NGAY = { DONG: [6], LAN1: [4], TONG_HOP_LO: [4] };
+const XL_COT_GIO = { DONG: [1], HOC: [4, 5], THUOC_MOI: [1] };   // date-time cells, serial with a day fraction
 const XL_COT_LO = { DONG: [5], LAN1: [3], TONG_HOP_LO: [3] };
 
 /** 'DD/MM/YYYY' -> Excel serial (days since 1899-12-30) by pure UTC arithmetic, so no time zone can shift it. Other text is returned unchanged. */
 function xlNgay(s) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s == null ? '' : s).trim());
   return m ? (Date.UTC(+m[3], +m[2] - 1, +m[1]) - Date.UTC(1899, 11, 30)) / 864e5 : s;
+}
+/** 'YYYY-MM-DD HH:MM:SS' (Vietnam time, from xuatDot *Day keys) -> Excel serial with a day fraction, same UTC arithmetic as xlNgay. Empty or other input gives ''. */
+function xlGio(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(s == null ? '' : s));
+  return m ? (Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 864e5 + (m[4] * 3600 + m[5] * 60 + +m[6]) / 86400 : '';
 }
 const xlSo = x => Math.round(x * 1e6) / 1e6;                       // drop float noise from summing decimals
 const xlCong = (map, k, v) => map.set(k, (map.get(k) || 0) + (Number(v) || 0));
@@ -31,10 +37,10 @@ const tenFileExcel = ten => ('KIEM-KHO-' + String(ten == null ? '' : ten).trim()
 /** data = response of API xuatDot. Returns {sheetName: rows[][]} with the header as the first row of each sheet. */
 globalThis.taoSoExcel = function (data) {
   const khos = data.khos || [], live = (data.dong || []).filter(x => x.st === 'HIEU_LUC');
-  const dong = (data.dong || []).map(x => [x.id, x.tg, x.kho, x.ma, x.ten, String(x.lo), xlNgay(x.hsd), String(x.hoc), x.hop, x.qc, x.le, x.sl, x.dvt,
+  const dong = (data.dong || []).map(x => [x.id, xlGio(x.tgDay), x.kho, x.ma, x.ten, String(x.lo), xlNgay(x.hsd), String(x.hoc), x.hop, x.qc, x.le, x.sl, x.dvt,
     x.nguoi, x.tk, x.tt, x.st, x.thayBoi, x.ghi, x.cb, x.req, x.capNhat, x.seThay]);
-  const hoc = (data.hoc || []).map(h => [h.kho, String(h.hoc), h.st, h.nguoi, h.batDau, h.xongLuc, h.nguoiXong, h.ghi]);
-  const thuocMoi = (data.thuocMoi || []).map(t => [t.id, t.tg, t.maDeXuat, t.ten, t.dvtn, t.qc, t.dvt, t.kho, t.nguoi, t.st, t.maChinhThuc, t.ghi]);
+  const hoc = (data.hoc || []).map(h => [h.kho, String(h.hoc), h.st, h.nguoi, xlGio(h.batDauDay), xlGio(h.xongLucDay), h.nguoiXong, h.ghi]);
+  const thuocMoi = (data.thuocMoi || []).map(t => [t.id, xlGio(t.tgDay), t.maDeXuat, t.ten, t.dvtn, t.qc, t.dvt, t.kho, t.nguoi, t.st, t.maChinhThuc, t.ghi]);
   const lan1 = (data.soSanh || []).map(r => r.map((c, i) => i === 3 ? String(c) : i === 4 ? xlNgay(c) : c));
 
   // TONG_HOP: one row per danh mục drug; per kho: this đợt (sum of HIEU_LUC SL), comparison (sum of LAN1 SL), difference
@@ -75,6 +81,7 @@ globalThis.xlSach = function (sheets) {
     const ws = XLSX.utils.aoa_to_sheet(sheets[name]);
     for (let r = 1; r < sheets[name].length; r++) {
       (XL_COT_NGAY[name] || []).forEach(c => { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === 'n') cell.z = 'dd/mm/yyyy'; });
+      (XL_COT_GIO[name] || []).forEach(c => { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === 'n') cell.z = 'dd/mm/yyyy hh:mm'; });
       (XL_COT_LO[name] || []).forEach(c => { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell) { cell.t = 's'; cell.v = String(cell.v); delete cell.z; } });
     }
     XLSX.utils.book_append_sheet(wb, ws, name);

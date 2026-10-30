@@ -10,7 +10,7 @@ new vm.Script(readFileSync(new URL('../xuatexcel.js', import.meta.url), 'utf8'))
 const legacy = readFileSync(new URL('../legacy/Code.gs', import.meta.url), 'utf8');
 
 let n = 0;
-const dong = o => Object.assign({ id: 'D' + String(++n).padStart(5, '0'), tg: '30/10 08:00', kho: 'CHAN', ma: 'A-1', ten: 'Thuốc A', lo: 'L1', hsd: '15/03/2027', hoc: 'A 1',
+const dong = o => Object.assign({ id: 'D' + String(++n).padStart(5, '0'), tg: '30/10 08:00', tgDay: '2026-10-30 08:00:00', kho: 'CHAN', ma: 'A-1', ten: 'Thuốc A', lo: 'L1', hsd: '15/03/2027', hoc: 'A 1',
   hop: 1, qc: 10, le: 0, sl: 10, dvt: 'Viên', nguoi: 'Lan', tk: 'TK04', tt: 'LUU', st: 'HIEU_LUC', ghi: '', cb: '', seThay: '', thayBoi: '', req: 'r' + n, capNhat: '' }, o);
 const data = o => Object.assign({
   dot: { id: 'DOT01', ten: 'Kiểm kho 10/2026', st: 'MO', kho: ['CHAN', 'LE'] },
@@ -84,11 +84,12 @@ test('hsd_la_so_serial_va_lo_la_chu', () => {
 
 test('hoc_thuoc_moi_lan1_danh_muc', () => {
   const s = taoSoExcel(data({
-    hoc: [{ kho: 'CHAN', hoc: 'A 1', st: 'XONG', nguoi: 'Lan', batDau: '30/10 08:00', xongLuc: '30/10 09:00', nguoiXong: 'Lan', ghi: '' }],
-    thuocMoi: [{ id: 'M001', tg: '30/10 08:10', maDeXuat: 'X', ten: 'Mới', dvtn: 'Hộp', qc: 10, dvt: 'Viên', kho: 'CHAN', nguoi: 'Lan', st: 'CHO_DUYET', maChinhThuc: '', ghi: '' }],
+    hoc: [{ kho: 'CHAN', hoc: 'A 1', st: 'XONG', nguoi: 'Lan', batDau: '30/10 08:00', xongLuc: '30/10 09:00', nguoiXong: 'Lan', ghi: '', batDauDay: '2026-10-30 08:00:00', xongLucDay: '' }],
+    thuocMoi: [{ id: 'M001', tg: '30/10 08:10', tgDay: '2026-10-30 08:10:00', maDeXuat: 'X', ten: 'Mới', dvtn: 'Hộp', qc: 10, dvt: 'Viên', kho: 'CHAN', nguoi: 'Lan', st: 'CHO_DUYET', maChinhThuc: '', ghi: '' }],
     soSanh: [['CHAN', 'A-1', 'Thuốc A', '0042', '15/03/2027', 100, 'Viên', 'A 1', 'Lan']] }));
-  assert.deepEqual(s.HOC[1], ['CHAN', 'A 1', 'XONG', 'Lan', '30/10 08:00', '30/10 09:00', 'Lan', '']);
+  assert.deepEqual(s.HOC[1], ['CHAN', 'A 1', 'XONG', 'Lan', xlGio('2026-10-30 08:00:00'), '', 'Lan', '']);   // empty xongLucDay stays empty
   assert.equal(s.THUOC_MOI[1][0], 'M001');
+  assert.equal(s.THUOC_MOI[1][1], xlGio('2026-10-30 08:10:00'));
   assert.equal(s.LAN1[1][3], '0042');
   assert.equal(s.LAN1[1][4], 46461);
   assert.equal(s.DANH_MUC.length, 3);
@@ -108,4 +109,25 @@ test('sach_excel_kieu_o', () => {
   const lo = out.Sheets.DONG.F2, hsd = out.Sheets.DONG.G2;
   assert.equal(lo.t, 's'); assert.equal(lo.v, '00123');
   assert.equal(hsd.t, 'n'); assert.equal(hsd.v, 46461); assert.equal(hsd.w, '15/03/2027');
+});
+
+test('thoi_diem_la_so_serial_co_phan_ngay', () => {
+  assert.equal(xlGio('2026-12-31 23:45:00'), 46387 + (23 * 3600 + 45 * 60) / 86400);       // 2026-12-31 = serial 46387
+  assert.equal(xlGio('2027-01-01 00:00:00'), 46388);
+  assert.equal(xlGio(''), '');
+  assert.equal(xlGio(undefined), '');
+  const s = taoSoExcel(data({ dong: [dong({ tgDay: '2026-12-31 23:45:00' })] }));
+  assert.equal(s.DONG[1][col(s.DONG, 'Thời điểm')], 46387 + 85500 / 86400);
+  assert.equal(s.DONG[1][col(s.DONG, 'Cập nhật')], '');                                 // stays text, as in the legacy sheet
+});
+
+test('o_thoi_diem_co_dinh_dang_ngay_gio', () => {
+  globalThis.XLSX = createRequire(import.meta.url)('../vendor/sheetjs/xlsx.full.min.js');
+  const wb = xlSach(taoSoExcel(data({ dong: [dong({ tgDay: '2026-12-31 23:45:00' })], hoc: [{ kho: 'CHAN', hoc: 'A 1', st: 'XONG', nguoi: '', batDau: '', xongLuc: '', nguoiXong: '', ghi: '', batDauDay: '2026-12-31 23:45:00', xongLucDay: '' }] })));
+  const out = XLSX.read(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }), { type: 'array', cellNF: true });
+  assert.equal(out.Sheets.DONG.B2.t, 'n');
+  assert.equal(out.Sheets.DONG.B2.z, 'dd/mm/yyyy hh:mm');
+  assert.equal(out.Sheets.DONG.B2.w, '31/12/2026 23:45');
+  assert.equal(out.Sheets.HOC.E2.w, '31/12/2026 23:45');
+  assert.equal(out.Sheets.HOC.F2.t, 's');                                              // empty xong lúc: no number format on a text cell
 });

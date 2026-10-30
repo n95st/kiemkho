@@ -253,8 +253,8 @@ try {
   });
   await run('xuat_excel', async () => {
     // one counted line with a numeric-looking lot and a real HSD, then export the đợt from the Quản lý tab
-    sql("insert into kk.dong (dot_id, so, tap, kho, ma, ten, lo, hsd, hoc, hop, qc, le, sl, dvt, nguoi, tk, thao_tac, trang_thai, req_id) " +
-        "values ('DOT01', 9001, false, 'CHAN', 'TT-0001', 'Paracetamol 500mg', '00123', date '2027-05-01', 'A 1', 1, 10, 0, 10, 'Viên', 'Lan', 'TK04', 'LUU', 'HIEU_LUC', 'xl-9001')");
+    sql("insert into kk.dong (dot_id, so, tap, tg, kho, ma, ten, lo, hsd, hoc, hop, qc, le, sl, dvt, nguoi, tk, thao_tac, trang_thai, req_id) " +
+        "values ('DOT01', 9001, false, timestamptz '2026-12-31 23:45:00+07', 'CHAN', 'TT-0001', 'Paracetamol 500mg', '00123', date '2027-05-01', 'A 1', 1, 10, 0, 10, 'Viên', 'Lan', 'TK04', 'LUU', 'HIEU_LUC', 'xl-9001')");
     const ten = sql("select ten from kk.dot where id = 'DOT01'");
     const p = await newPage();
     await vao(p, '111111');
@@ -273,13 +273,15 @@ ws = wb['DONG']
 print('|'.join(str(c.value) for c in ws[1]))
 r = ws[2]
 print(repr(r[5].value), r[5].data_type, repr(r[6].value), r[6].number_format)
+print(repr(r[1].value), r[1].number_format, repr(r[21].value))
 l1 = wb['LAN1']
 print(repr(l1['E2'].value))
 `, file], { encoding: 'utf8' }).trim().split('\n');
     ok(out[0] === 'TONG_HOP,TONG_HOP_LO,DONG,HOC,THUOC_MOI,LAN1,DANH_MUC', 'tên sheet: ' + out[0]);
     ok(out[1].startsWith('ID|Thời điểm|Kho|Mã|Tên thuốc|Số lô|HSD|Hộc|') && out[1].split('|').length === 23, 'dòng tiêu đề DONG: ' + out[1]);
     ok(out[2] === "'00123' s datetime.datetime(2027, 5, 1, 0, 0) dd/mm/yyyy", 'ô Số lô/HSD: ' + out[2]);
-    ok(out[3] === 'datetime.datetime(2027, 3, 15, 0, 0)', 'HSD của LAN1: ' + out[3]);
+    ok(out[3] === "datetime.datetime(2026, 12, 31, 23, 45) dd/mm/yyyy hh:mm ''" || out[3] === "datetime.datetime(2026, 12, 31, 23, 45) dd/mm/yyyy hh:mm None", 'Thời điểm của DONG: ' + out[3]);
+    ok(out[4] === 'datetime.datetime(2027, 3, 15, 0, 0)', 'HSD của LAN1: ' + out[4]);
     ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
     await p.context().close();
   });

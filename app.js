@@ -1,6 +1,6 @@
 /* Kiểm kho iSOFH – web app (GitHub Pages) · dữ liệu lưu ở Supabase */
 'use strict';
-const APP_VER = '4.1.1';
+const APP_VER = '4.1.2';
 const $ = id => document.getElementById(id);
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('kk_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },

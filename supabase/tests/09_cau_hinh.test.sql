@@ -1,5 +1,5 @@
 begin;
-select plan(139);
+select plan(143);
 
 -- helper: IT (TK01) by default, on DOT01 / CHAN
 create function pg_temp.api(act text, extra jsonb default '{}', pin text default '111111') returns jsonb language sql as $$
@@ -187,9 +187,19 @@ create temp table r_xd as select pg_temp.api('xuatDot', '{}', '222222') as j;
 select is((select j->>'ok' from r_xd), 'true', 'xuat_dot_to_truong_duoc');
 select is((select array_agg(k order by k) from r_xd, jsonb_object_keys(j) k), array['danhMuc','dong','dot','hoc','khos','ok','soSanh','thuocMoi'], 'xuat_dot_khoa_json');
 select is((select jsonb_path_query_array(j->'dong', '$[*].id') from r_xd), '["D00001","D00011","D00012"]'::jsonb, 'xuat_dot_khong_co_tap');
-select is((select (j->'dong'->1) - 'tg'::text from r_xd), (select kk.dong_json(x) - 'tg'::text || '{"thayBoi":"D00012","req":"rq1","capNhat":"cu"}'::jsonb
+select is((select (j->'dong'->1) - 'tg'::text - 'tgDay'::text from r_xd), (select kk.dong_json(x) - 'tg'::text || '{"thayBoi":"D00012","req":"rq1","capNhat":"cu"}'::jsonb
   from kk.dong x where x.dot_id = 'DOT01' and x.so = 11), 'xuat_dot_dong_them_thay_boi_req_cap_nhat');
 select is((select j->'dong'->2->>'thayBoi' || '|' || (j->'dong'->2->>'req') || '|' || (j->'dong'->2->>'capNhat') from r_xd), '||', 'xuat_dot_dong_rong_la_chuoi_rong');
+-- full timestamps (with year) for the Excel date-time cells; dong_json itself keeps the short 'DD/MM HH:MM'
+update kk.dong set tg = timestamptz '2026-12-31 23:45:00+07' where dot_id = 'DOT01' and so = 12;
+update kk.hoc set bat_dau = timestamptz '2026-12-31 16:46:07+00', xong_luc = null where dot_id = 'DOT01' and not tap and kho = 'CHAN' and hoc = 'B2';
+insert into kk.thuoc_moi (dot_id, so, tg, ten, dvt, kho, nguoi) values ('DOT01', 1, timestamptz '2026-12-31 23:50:00+07', 'Thuốc mới thử', 'Viên', 'CHAN', 'Lan');
+create temp table r_xd2 as select pg_temp.api('xuatDot', '{}', '222222') as j;
+select is((select j->'dong'->2->>'tgDay' from r_xd2), '2026-12-31 23:45:00', 'xuat_dot_dong_tg_day_day_du_nam');
+select is((select j->'dong'->2->>'tg' from r_xd2), '31/12 23:45', 'xuat_dot_dong_tg_van_dang_ngan');
+select is((select x->>'batDauDay' || '|' || (x->>'xongLucDay') from r_xd2, jsonb_array_elements(j->'hoc') x where x->>'hoc' = 'B2'), '2026-12-31 23:46:07|', 'xuat_dot_hoc_bat_dau_day_va_xong_luc_rong');
+select is((select j->'thuocMoi'->0->>'tgDay' from r_xd2), '2026-12-31 23:50:00', 'xuat_dot_thuoc_moi_tg_day');
+delete from kk.thuoc_moi where dot_id = 'DOT01' and so = 1;
 select is((select j->'khos' from r_xd), '[{"ma":"CHAN","ten":"Kho chẵn","tenNgan":"CHẴN"},{"ma":"LE","ten":"Kho lẻ","tenNgan":"LẺ"}]'::jsonb, 'xuat_dot_khos');
 select is((select j->'dot'->>'id' from r_xd), 'DOT01', 'xuat_dot_dot');
 select is((select jsonb_array_length(j->'danhMuc') from r_xd), 4, 'xuat_dot_danh_muc_du_dong');
