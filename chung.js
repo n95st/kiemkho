@@ -4,6 +4,11 @@
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Names of a counted line's action (thao_tac) and state (trang_thai, plus the phone queue states)
+const TT_TEN = { CONG_THEM: 'Cộng thêm', DEM_LAI_HOC: 'Đếm lại hộc', DON_LO: 'Dồn cả lô', GOP_LO: 'Gộp lô', THUOC_MOI: 'Thuốc mới',
+  BO_SUNG_CONG_THEM: 'Bổ sung (cộng)', BO_SUNG_DEM_LAI_HOC: 'Bổ sung (đếm lại hộc)', BO_SUNG_DON_LO: 'Bổ sung (dồn lô)' };
+const ST_TEN = { HIEU_LUC: 'Đã lưu', THAY_THE: 'Đã bị thay', HUY: 'Đã huỷ', CHO_DUYET: 'Chờ duyệt', TU_CHOI: 'Từ chối',
+  pending: 'Chờ gửi', sending: 'Đang gửi', need: 'Cần xử lý', error: 'Lỗi', done: 'Đã lưu' };
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
 
 // ===================================================================== API

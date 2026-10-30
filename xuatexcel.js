@@ -37,11 +37,14 @@ const tenFileExcel = ten => ('KIEM-KHO-' + String(ten == null ? '' : ten).trim()
 /** One comparison row as the server sends it (dsSoSanh, xuatDot soSanh) -> Excel row: lot as text, HSD as a date serial. */
 const xlDongLan1 = r => r.map((c, i) => i === 3 ? String(c) : i === 4 ? xlNgay(c) : c);
 
+/** One counted line as xuatDot sends it -> DONG sheet row (time and HSD as date serials, lot and hộc as text). */
+const xlDongDem = x => [x.id, xlGio(x.tgDay), x.kho, x.ma, x.ten, String(x.lo), xlNgay(x.hsd), String(x.hoc), x.hop, x.qc, x.le, x.sl, x.dvt,
+  x.nguoi, x.tk, x.tt, x.st, x.thayBoi, x.ghi, x.cb, x.req, x.capNhat, x.seThay];
+
 /** data = response of API xuatDot. Returns {sheetName: rows[][]} with the header as the first row of each sheet. */
 globalThis.taoSoExcel = function (data) {
   const khos = data.khos || [], live = (data.dong || []).filter(x => x.st === 'HIEU_LUC');
-  const dong = (data.dong || []).map(x => [x.id, xlGio(x.tgDay), x.kho, x.ma, x.ten, String(x.lo), xlNgay(x.hsd), String(x.hoc), x.hop, x.qc, x.le, x.sl, x.dvt,
-    x.nguoi, x.tk, x.tt, x.st, x.thayBoi, x.ghi, x.cb, x.req, x.capNhat, x.seThay]);
+  const dong = (data.dong || []).map(xlDongDem);
   const hoc = (data.hoc || []).map(h => [h.kho, String(h.hoc), h.st, h.nguoi, xlGio(h.batDauDay), xlGio(h.xongLucDay), h.nguoiXong, h.ghi]);
   const thuocMoi = (data.thuocMoi || []).map(t => [t.id, xlGio(t.tgDay), t.maDeXuat, t.ten, t.dvtn, t.qc, t.dvt, t.kho, t.nguoi, t.st, t.maChinhThuc, t.ghi]);
   const lan1 = (data.soSanh || []).map(xlDongLan1);
@@ -133,6 +136,35 @@ function tachTheoKho(list, so, ks) {
 function doiDongLoi(loi, nhieuKho) {
   return loi.map(x => { const g = nhieuKho.find(k => k.kho === x.kho); return { dong: g ? g.so[x.dong - 1] : x.dong, error: x.error }; })
     .sort((a, b) => a.dong - b.dong);
+}
+
+// ===================================================================== Kết quả kiểm (quantri.html)
+const NHAT_KY_TEN = { TAO_DOT: 'Tạo đợt', DONG_DOT: 'Đóng đợt', MO_DOT: 'Mở lại đợt', CHOT_KHO: 'Chốt kho', MO_KHO: 'Mở lại kho',
+  LUU_HOC: 'Thêm hoặc xoá hộc', XONG_HOC: 'Xong hộc', MO_LAI_HOC: 'Mở lại hộc', HOAN_TAC: 'Hoàn tác dòng', GOP_LO: 'Gộp lô',
+  THUOC_MOI: 'Gửi thuốc mới', DUYET_THUOC_MOI: 'Duyệt thuốc mới', TU_CHOI_THUOC_MOI: 'Từ chối thuốc mới', DUYET: 'Duyệt phiếu bổ sung',
+  TU_CHOI: 'Từ chối phiếu bổ sung', NHAP_SO_SANH: 'Nhập số liệu so sánh', XUAT_DOT: 'Xuất Excel đợt', LUU_TAI_KHOAN: 'Lưu tài khoản',
+  DAT_LAI_PIN: 'Đặt lại PIN', LUU_THUOC: 'Lưu thuốc', NHAP_THUOC: 'Nhập danh mục', LUU_KHO: 'Lưu kho', LUU_CAU_HINH: 'Lưu cấu hình' };
+/** list = counted lines of xuatDot / xemDot; same sheet as DONG of the đợt export. */
+function soDongDem(list) { return { DONG: [DONG_HEADER].concat(list.map(xlDongDem)) }; }
+/** list = API nhatKy. */
+function soNhatKy(list) {
+  return { NHAT_KY: [['Thời điểm', 'Mã TK', 'Người', 'Thao tác', 'Chi tiết', 'Đợt']].concat(list.map(n => [n.tg, n.tk, n.ten, NHAT_KY_TEN[n.hanhDong] || n.hanhDong, n.chiTiet, n.dot])) };
+}
+/** Per person (by account): lines still counted, distinct mã and hộc among them, lines waiting / cancelled / replaced / refused,
+ * first and last line time (DD/MM HH:MM). Header row first, then one row per account in account order. */
+function thongKeNguoi(dong) {
+  const g = new Map(), gio = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + ' ' + s.slice(11, 16) : '';
+  dong.forEach(x => {
+    let p = g.get(x.tk);
+    if (!p) g.set(x.tk, p = { ten: x.nguoi, ma: new Set(), hoc: new Set(), n: { HIEU_LUC: 0, CHO_DUYET: 0, HUY: 0, THAY_THE: 0, TU_CHOI: 0 }, dau: x.tgDay, cuoi: x.tgDay });
+    p.n[x.st] = (p.n[x.st] || 0) + 1;
+    if (x.st === 'HIEU_LUC') { p.ma.add(x.ma); p.hoc.add(x.hoc); }
+    if (x.tgDay < p.dau) p.dau = x.tgDay;
+    if (x.tgDay > p.cuoi) p.cuoi = x.tgDay;
+  });
+  return [['Mã TK', 'Người đếm', 'Dòng đang tính', 'Số mã', 'Số hộc', 'Chờ duyệt', 'Đã huỷ', 'Bị thay', 'Từ chối', 'Bắt đầu', 'Lần cuối']]
+    .concat([...g].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0).map(([tk, p]) =>
+      [tk, p.ten, p.n.HIEU_LUC, p.ma.size, p.hoc.size, p.n.CHO_DUYET, p.n.HUY, p.n.THAY_THE, p.n.TU_CHOI, gio(p.dau), gio(p.cuoi)]));
 }
 
 /** Ask the server for the whole đợt and save it as KIEM-KHO-<tên đợt>.xlsx. Throws Error with a Vietnamese message. */

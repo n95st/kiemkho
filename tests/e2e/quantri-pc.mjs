@@ -93,7 +93,8 @@ try {
     const p = await newPage();
     await vao(p, '111111');
     const menu = (await p.locator('#menu button').allTextContents()).map(s => s.trim());
-    for (const t of ['Tài khoản', 'Danh mục thuốc', 'Kho và hộc', 'Số liệu so sánh', 'Đợt kiểm']) ok(menu.includes(t), 'menu thiếu ' + t + ': ' + menu);
+    for (const t of ['Kết quả kiểm', 'Tài khoản', 'Danh mục thuốc', 'Kho và hộc', 'Số liệu so sánh', 'Đợt kiểm']) ok(menu.includes(t), 'menu thiếu ' + t + ': ' + menu);
+    ok(menu[0] === 'Kết quả kiểm', 'mục đầu menu: ' + menu[0]);
     ok(await p.inputValue('#dot') === 'DOT01', 'đợt mặc định: ' + await p.inputValue('#dot'));
     sachLoi(p);
     await p.context().close();
@@ -697,6 +698,115 @@ try {
     await p.context().close();
   });
 
+  // ------------------------------------------------------------ kết quả kiểm
+  const DOC = '<img src=x onerror="window.__x=1">';
+  sql(`insert into kk.dong (dot_id, so, tap, tg, kho, ma, ten, lo, hsd, hoc, hop, qc, le, sl, dvt, nguoi, tk, thao_tac, trang_thai, req_id, ghi, thay_boi, se_thay) values
+    ('DOT01', 9001, false, timestamptz '2026-10-30 08:00+07', 'CHAN', 'TT-0001', 'Paracetamol 500mg', 'L-KQ', date '2027-05-01', 'A 1', 1, 100, 20, 120, 'Viên', 'Người đếm 4', 'TK04', 'CONG_THEM', 'HIEU_LUC', 'kq1', '', null, '{}'),
+    ('DOT01', 9002, false, timestamptz '2026-10-30 08:10+07', 'CHAN', 'TT-0001', 'Paracetamol 500mg', 'L-KQ', date '2027-05-01', 'A 1', null, null, 10, 10, 'Viên', 'Người đếm 4', 'TK04', 'CONG_THEM', 'HUY', 'kq2', 'Sửa số', null, '{}'),
+    ('DOT01', 9003, false, timestamptz '2026-10-30 09:00+07', 'CHAN', 'TT-0001', 'Paracetamol 500mg', 'L-KQ', date '2027-05-01', 'A 2', null, null, 30, 30, 'Viên', 'Người đếm 5', 'TK05', 'CONG_THEM', 'THAY_THE', 'kq3', '', 9004, '{}'),
+    ('DOT01', 9004, false, timestamptz '2026-10-30 09:30+07', 'CHAN', 'TT-0001', 'Paracetamol 500mg', 'L-KQ', date '2027-05-01', 'A 2', null, null, 25, 25, 'Viên', 'Người đếm 5', 'TK05', 'DEM_LAI_HOC', 'HIEU_LUC', 'kq4', '${DOC}', null, '{9003}')`);
+  // Opens Kết quả kiểm on DOT01 and waits until the count line reads `dem`
+  async function moKetQua(p, dem = '4 / 4') {
+    await p.selectOption('#dot', 'DOT01');
+    await p.click('#menu button:has-text("Kết quả kiểm")');
+    await p.waitForFunction(d => { const e = document.querySelector('#bang .dem'); return e && e.textContent === d; }, dem, { timeout: 15000 });
+  }
+  const xemPhan = (p, ten) => p.click(`#kqXem button:has-text("${ten}")`);
+  const cot = (p, i) => p.$$eval('#ds tbody tr', (rs, i) => rs.map(r => r.cells[i].textContent), i);
+
+  await run('ket_qua_dong_da_dem', async () => {
+    const xuat = sql("select count(*) from kk.nhat_ky where hanh_dong = 'XUAT_DOT'");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moKetQua(p);
+    ok((await p.textContent('#ds')).includes('Sửa số'), 'bảng không có cột ghi chú');
+    await p.selectOption('#locNguoi', { label: 'Người đếm 5' });
+    ok(await dem(p) === '2 / 4', 'lọc người: ' + await dem(p));
+    ok((await cot(p, 10)).every(x => x === 'Người đếm 5'), 'lọc người sai: ' + await cot(p, 10));
+    await p.selectOption('#locNguoi', '');
+    await p.fill('#tim', 'sua so');
+    ok(await dem(p) === '1 / 4', 'tìm theo ghi chú: ' + await dem(p));
+    await p.fill('#tim', '');
+    ok((await p.textContent('#ds')).includes(DOC) && await p.locator('#bang img').count() === 0, 'ghi chú có thẻ HTML không hiện nguyên chữ');
+    ok(await p.evaluate(() => window.__x) === undefined, 'mã đã chạy (window.__x)');
+    ok(sql("select count(*) from kk.nhat_ky where hanh_dong = 'XUAT_DOT'") === xuat, 'mở Kết quả kiểm mà nhật ký ghi "đã xuất đợt"');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('ket_qua_chi_tiet_va_lich_su_lo', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moKetQua(p);
+    await p.click('#ds tbody tr:has-text("D09004")');
+    const k = await p.textContent('#khung');
+    ok(/Đếm lại hộc/.test(k) && k.includes('D09003') && k.includes(DOC), 'khung chi tiết thiếu thao tác, dòng bị thay hoặc ghi chú: ' + k);
+    for (const id of ['D09001', 'D09002', 'D09003', 'D09004']) ok(await p.locator(`#lichSuLo tr:has-text("${id}")`).count() === 1, 'lịch sử lô thiếu ' + id);
+    ok(await p.locator('#khung button:has-text("Lưu")').count() === 0, 'khung chi tiết có nút Lưu');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('ket_qua_tai_excel_dong', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moKetQua(p);
+    await p.selectOption('#locNguoi', { label: 'Người đếm 5' });
+    const { file, ten } = await taiVe(p, '#bang button:has-text("Tải Excel")', 'kq-dong.xlsx');
+    ok(ten === 'DONG-DEM-Đợt thử.xlsx', 'tên file: ' + ten);
+    const rows = docXlsx(file);
+    ok(rows[0].startsWith('ID|Thời điểm|Kho|Mã|Tên thuốc|Số lô|HSD|Hộc') && rows.length === 3, 'file: ' + rows.join(' / '));
+    ok(rows.slice(1).every(r => r.includes('|Người đếm 5|')), 'file có dòng ngoài bộ lọc');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('ket_qua_theo_nguoi', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moKetQua(p);
+    await xemPhan(p, 'Theo người kiểm');
+    await p.waitForSelector('#ds tbody tr:has-text("TK04")', { timeout: 10000 });
+    const tk04 = await p.$eval('#ds tbody tr:has-text("TK04")', r => [...r.cells].slice(0, 9).map(c => c.textContent).join('|'));
+    ok(tk04 === 'TK04|Người đếm 4|1|1|1|0|1|0|0', 'thống kê TK04: ' + tk04);
+    const { file } = await taiVe(p, '#bang button:has-text("Tải Excel")', 'kq-nguoi.xlsx');
+    ok(docXlsx(file)[0] === 'Mã TK|Người đếm|Dòng đang tính|Số mã|Số hộc|Chờ duyệt|Đã huỷ|Bị thay|Từ chối|Bắt đầu|Lần cuối', 'file thống kê: ' + docXlsx(file)[0]);
+    await p.click('#ds tbody tr:has-text("TK05")');                      // a person's row opens that person's lines
+    await p.waitForFunction(() => document.querySelector('#bang .dem') && document.querySelector('#bang .dem').textContent === '2 / 4', null, { timeout: 10000 });
+    ok(await p.inputValue('#locNguoi') === 'TK05', 'không lọc theo người vừa bấm');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('ket_qua_tong_hop_thuoc', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moKetQua(p);
+    await xemPhan(p, 'Tổng hợp theo thuốc');
+    await p.waitForSelector('#ds tbody tr:has-text("TT-0001")', { timeout: 10000 });
+    const i = (await p.locator('#ds thead th').allTextContents()).indexOf('CHẴN đợt này');
+    ok(i > 0, 'thiếu cột CHẴN đợt này');
+    ok(await p.$eval('#ds tbody tr:has-text("TT-0001")', (r, i) => r.cells[i].textContent, i) === '145', 'CHẴN đợt này của TT-0001 (120 + 25 đang tính)');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('ket_qua_nhat_ky', async () => {
+    sql("insert into kk.nhat_ky (dot_id, tk, ten, hanh_dong, chi_tiet) values ('DOT01', 'TK01', 'Quản trị IT', 'CHOT_KHO', 'CHAN')");
+    const p = await newPage();
+    await vao(p, '111111');
+    await moKetQua(p);
+    await xemPhan(p, 'Nhật ký');
+    await p.waitForSelector('#ds tbody tr:has-text("Chốt kho")', { timeout: 10000 });
+    await p.selectOption('#locHd', { label: 'Chốt kho' });
+    ok((await cot(p, 2)).every(x => x === 'Chốt kho'), 'lọc thao tác: ' + await cot(p, 2));
+    const { file } = await taiVe(p, '#bang button:has-text("Tải Excel")', 'kq-nhat-ky.xlsx');
+    const rows = docXlsx(file);
+    ok(rows[0] === 'Thời điểm|Mã TK|Người|Thao tác|Chi tiết|Đợt' && rows.slice(1).every(r => r.includes('|Chốt kho|')), 'file nhật ký: ' + rows.join(' / '));
+    sachLoi(p);
+    await p.context().close();
+  });
+
   // ------------------------------------------------------------ không còn đợt nào (chạy cuối vì xoá mọi đợt)
   await run('hoc_chua_co_dot', async () => {
     sql('delete from kk.so_sanh; delete from kk.dong; delete from kk.thuoc_moi; delete from kk.dot_kho; delete from kk.hoc; delete from kk.dot');
@@ -709,6 +819,8 @@ try {
     await p.waitForFunction(() => /Chưa có đợt kiểm/.test(document.getElementById('bang').textContent), null, { timeout: 10000 });
     await p.click('#menu button:has-text("Đợt kiểm")');
     await p.waitForSelector('#bang button:has-text("Tạo đợt")', { state: 'visible', timeout: 10000 });
+    await p.click('#menu button:has-text("Kết quả kiểm")');
+    await p.waitForFunction(() => /Chưa có đợt kiểm/.test(document.getElementById('bang').textContent), null, { timeout: 10000 });
     sachLoi(p);
     await p.context().close();
   });

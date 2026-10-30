@@ -38,14 +38,15 @@ function veBang(hop, cot, dong, loc, chon, dangChon) {
   };
 }
 /** Opens the edit panel on the right. luu() returns a Promise; a thrown Error shows its message (the server's words) in #khungLoi. */
-function moKhung(tieuDe, oHtml, luu) {
+function moKhung(tieuDe, oHtml, luu) {                         // without luu the panel is read-only: no Lưu, Huỷ reads Đóng
   const k = $('khung');
   k.innerHTML = `<h2>${esc(tieuDe)}</h2><form id="khungForm" novalidate>${oHtml}<p id="khungLoi" class="msg"></p>
-    <div class="nut"><button type="submit" class="btn primary">Lưu</button><button type="button" id="khungHuy" class="btn ghost">Huỷ</button></div></form>`;
+    <div class="nut">${luu ? '<button type="submit" class="btn primary">Lưu</button>' : ''}<button type="button" id="khungHuy" class="btn ghost">${luu ? 'Huỷ' : 'Đóng'}</button></div></form>`;
   k.classList.remove('hidden'); $('qt').classList.add('co-khung');
   $('khungHuy').onclick = dongKhung;
   $('khungForm').onsubmit = async e => {
     e.preventDefault();
+    if (!luu) return;
     const nut = e.submitter || k.querySelector('[type=submit]');
     nut.disabled = true; $('khungLoi').textContent = '';
     try { await luu(); } catch (err) { if ($('khungLoi')) $('khungLoi').textContent = err.message; } finally { nut.disabled = false; }
@@ -103,7 +104,7 @@ async function chonDot(id) {
   $('dot').innerHTML = S.dots.map(d => `<option value="${esc(d.id)}"${d.id === S.dot ? ' selected' : ''}>${esc(d.id + ' · ' + d.ten + (d.st === 'MO' ? '' : ' (đã đóng)'))}</option>`).join('');
   await moMuc(mucMo);
 }
-let mucMo = 'taiKhoan';
+let mucMo = 'ketQua';
 async function moMuc(key) {
   mucMo = key;
   $('menu').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.muc === key));
@@ -424,8 +425,104 @@ async function taoDot() {
     });
 }
 
+// ===================================================================== Kết quả kiểm
+const KQ = { data: null, xem: 'dong', nhatKy: null, nguoi: '' };
+const KQ_XEM = [['dong', 'Dòng đã đếm'], ['nguoi', 'Theo người kiểm'], ['thuoc', 'Tổng hợp theo thuốc'], ['nhatKy', 'Nhật ký']];
+const tenFileDot = dau => tenFileExcel(S.dotInfo.ten).replace('KIEM-KHO-', dau + '-');
+const soVNo = v => typeof v === 'number' ? soVN(v) : String(v == null ? '' : v);
+async function veKetQua() {
+  if (!S.dotInfo) return void ($('bang').innerHTML = chuaCoDot());
+  $('bang').innerHTML = `<div class="nut" id="kqXem" style="margin:0 0 8px">${KQ_XEM.map(x => `<button type="button" class="btn small" data-xem="${x[0]}">${esc(x[1])}</button>`).join('')}</div>
+    <div class="cong-cu" id="kqCongCu"></div><div id="ds"></div>`;
+  $('kqXem').onclick = e => { const b = e.target.closest('[data-xem]'); if (b) { KQ.xem = b.dataset.xem; dongKhung(); veXemKq(); } };
+  KQ.data = KQ.nhatKy = null;                                     // fresh numbers every time the section or the đợt is opened
+  const dot = S.dot;
+  let r;
+  try { r = await goi('xemDot', {}, 60000); } catch (e) { r = e; }
+  if (mucMo !== 'ketQua' || dot !== S.dot) return;
+  if (r instanceof Error) return void ($('ds').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  KQ.data = r;
+  await veXemKq();
+}
+/** Draws the chosen view: its filters, its table and its "Tải Excel" button (the rows shown, as they are filtered). */
+async function veXemKq() {
+  $('kqXem').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.xem === KQ.xem));
+  const cc = $('kqCongCu'), dong = KQ.data.dong;
+  if (KQ.xem === 'dong') {
+    const nguoi = [...new Map(dong.map(x => [x.tk, x.nguoi]))].sort();
+    cc.innerHTML = oTim() + locChon('locKho', 'Mọi kho', S.dotInfo.kho.map(k => [k, k])) + locChon('locNguoi', 'Mọi người', nguoi)
+      + locChon('locSt', 'Mọi trạng thái', Object.entries(ST_TEN).slice(0, 5))
+      + '<button type="button" id="btnXuat" class="btn">Tải Excel</button><button type="button" id="btnDot" class="btn">Tải file đợt đầy đủ</button>';
+    $('locNguoi').value = KQ.nguoi;
+    const key = dong.map(x => norm([x.id, x.ma, x.ten, x.lo, x.hoc, x.ghi].join(' ')));
+    const hien = () => {
+      const q = norm($('tim').value.trim()), kho = $('locKho').value, tk = $('locNguoi').value, st = $('locSt').value;
+      return i => (!q || key[i].includes(q)) && (!kho || dong[i].kho === kho) && (!tk || dong[i].tk === tk) && (!st || dong[i].st === st);
+    };
+    const ve = () => veBang($('ds'), ['Mã dòng', 'Thời điểm', 'Kho', 'Hộc', 'Mã', 'Tên thuốc', 'Số lô', 'HSD', 'SL', 'ĐVT', 'Người đếm', 'Thao tác', 'Trạng thái', 'Ghi chú'],
+      dong.map(x => [x.id, x.tg, x.kho, x.hoc, x.ma, x.ten, x.lo, x.hsd, soVNo(x.sl), x.dvt, x.nguoi, TT_TEN[x.tt] || x.tt, ST_TEN[x.st] || x.st, x.ghi]),
+      hien(), i => chiTietDong(dong[i]), -1);
+    $('tim').oninput = $('locKho').onchange = $('locSt').onchange = ve;
+    $('locNguoi').onchange = () => { KQ.nguoi = $('locNguoi').value; ve(); };
+    $('btnXuat').onclick = () => { const f = hien(); taiFile(soDongDem(dong.filter((x, i) => f(i))), tenFileDot('DONG-DEM')).catch(baoLoi); };
+    $('btnDot').onclick = () => xuatExcel(S.dot).catch(baoLoi);
+    return ve();
+  }
+  if (KQ.xem === 'nguoi') {
+    const [cot, ...rows] = thongKeNguoi(dong);
+    cc.innerHTML = '<button type="button" id="btnXuat" class="btn">Tải Excel</button>';
+    $('btnXuat').onclick = () => taiFile({ THONG_KE: [cot].concat(rows) }, tenFileDot('THONG-KE-NGUOI')).catch(baoLoi);
+    return veBang($('ds'), cot, rows.map(r => r.map(soVNo)), () => true, i => { KQ.nguoi = rows[i][0]; KQ.xem = 'dong'; veXemKq(); }, -1);
+  }
+  if (KQ.xem === 'thuoc') {
+    const [cot, ...rows] = taoSoExcel(KQ.data).TONG_HOP, lech = cot.map((c, i) => /^Lệch /.test(c) ? i : -1).filter(i => i >= 0);
+    cc.innerHTML = oTim() + locChon('locThuoc', 'Mọi thuốc', [['lech', 'Có lệch'], ['chua', 'Chưa đếm']]) + '<button type="button" id="btnXuat" class="btn">Tải Excel</button>';
+    const key = rows.map(r => norm(r[0] + ' ' + r[1]));
+    const hien = () => {
+      const q = norm($('tim').value.trim()), loc = $('locThuoc').value;
+      return i => (!q || key[i].includes(q)) && (loc !== 'lech' || lech.some(c => Number(rows[i][c]))) && (loc !== 'chua' || /^CHƯA ĐẾM/.test(rows[i][cot.length - 1]));
+    };
+    const ve = () => veBang($('ds'), cot, rows.map(r => r.map(soVNo)), hien(), () => {}, -1);
+    $('tim').oninput = $('locThuoc').onchange = ve;
+    $('btnXuat').onclick = () => { const f = hien(); taiFile({ TONG_HOP: [cot].concat(rows.filter((r, i) => f(i))) }, tenFileDot('TONG-HOP')).catch(baoLoi); };
+    return ve();
+  }
+  // nhật ký: loaded the first time it is opened for this đợt
+  cc.innerHTML = '';
+  if (!KQ.nhatKy) {
+    const dot = S.dot;
+    let r;
+    try { r = await goi('nhatKy'); } catch (e) { r = e; }
+    if (mucMo !== 'ketQua' || KQ.xem !== 'nhatKy' || dot !== S.dot) return;
+    if (r instanceof Error) return void ($('ds').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+    KQ.nhatKy = r.list;
+  }
+  const nk = KQ.nhatKy, hd = [...new Set(nk.map(n => n.hanhDong))].map(h => [h, NHAT_KY_TEN[h] || h]).sort((a, b) => a[1].localeCompare(b[1], 'vi'));
+  cc.innerHTML = oTim() + locChon('locHd', 'Mọi thao tác', hd) + '<button type="button" id="btnXuat" class="btn">Tải Excel</button>';
+  const key = nk.map(n => norm([n.tk, n.ten, n.chiTiet, NHAT_KY_TEN[n.hanhDong] || n.hanhDong].join(' ')));
+  const hien = () => { const q = norm($('tim').value.trim()), h = $('locHd').value; return i => (!q || key[i].includes(q)) && (!h || nk[i].hanhDong === h); };
+  const ve = () => veBang($('ds'), ['Thời điểm', 'Người', 'Thao tác', 'Chi tiết', 'Đợt'],
+    nk.map(n => [n.tg, n.ten, NHAT_KY_TEN[n.hanhDong] || n.hanhDong, n.chiTiet, n.dot]), hien(), () => {}, -1);
+  $('tim').oninput = $('locHd').onchange = ve;
+  $('btnXuat').onclick = () => { const f = hien(); taiFile(soNhatKy(nk.filter((n, i) => f(i))), tenFileDot('NHAT-KY')).catch(baoLoi); };
+  ve();
+}
+/** Read-only panel of one line, with the history of its lô in that kho (every line of the same mã and lô, oldest first). */
+function chiTietDong(x) {
+  const o = [['Mã dòng', x.id], ['Thời điểm', x.tg], ['Kho', x.kho], ['Hộc', x.hoc], ['Mã thuốc', x.ma], ['Tên thuốc', x.ten], ['Số lô', x.lo], ['HSD', x.hsd],
+    ['Số hộp', x.hop], ['1 hộp có mấy', x.qc], ['Số lẻ', x.le], ['SL', soVNo(x.sl) + ' ' + x.dvt], ['Người đếm', x.nguoi + ' · ' + x.tk],
+    ['Thao tác', TT_TEN[x.tt] || x.tt], ['Trạng thái', ST_TEN[x.st] || x.st], ['Bị thay bởi', x.thayBoi], ['Thay các dòng', x.seThay],
+    ['Ghi chú', x.ghi], ['Cảnh báo', x.cb], ['Cập nhật', x.capNhat]].filter(r => r[1] !== '' && r[1] != null);
+  const ls = KQ.data.dong.filter(y => y.kho === x.kho && y.ma === x.ma && y.lo === x.lo);
+  moKhung('Dòng ' + x.id,
+    `<table class="ds">${o.map(r => `<tr><th>${esc(r[0])}</th><td style="white-space:normal">${esc(r[1])}</td></tr>`).join('')}</table>
+    <h2 class="muc-phu">Lịch sử lô ${esc(x.lo)}</h2><table class="ds" id="lichSuLo"><thead><tr><th>Mã dòng</th><th>Thời điểm</th><th>Hộc</th><th>SL</th><th>Người</th><th>Thao tác</th><th>Trạng thái</th></tr></thead><tbody>
+    ${ls.map(y => `<tr><td>${esc(y.id)}</td><td>${esc(y.tg)}</td><td>${esc(y.hoc)}</td><td>${esc(soVNo(y.sl))}</td><td>${esc(y.nguoi)}</td><td>${esc(TT_TEN[y.tt] || y.tt)}</td><td>${esc(ST_TEN[y.st] || y.st)}</td></tr>`).join('')}</tbody></table>`);
+}
+
 // ===================================================================== menu: [key, label, draw()]
 const MUC = [
+  ['ketQua', 'Kết quả kiểm', veKetQua],
   ['taiKhoan', 'Tài khoản', veTaiKhoan],
   ['danhMuc', 'Danh mục thuốc', veDanhMuc],
   ['kho', 'Kho và hộc', veKho],

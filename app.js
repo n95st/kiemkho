@@ -8,10 +8,6 @@ const LS = {
 };
 let DVT_LIST = ['Viên', 'Gói', 'Ống', 'Chai', 'Lọ', 'Tuýp', 'Hộp', 'Vỉ', 'Miếng', 'Cái', 'Bịch', 'Túi', 'Tép', 'Que', 'Bộ', 'Hũ', 'Bình', 'Can', 'Máy', 'Cuộn', 'Đôi', 'Liều'];
 let KHO_TEN = { CHAN: 'CHẴN', LE: 'LẺ' };          // defaults until the server sends S.user.khos / dvt (see applyUserConfig)
-const TT_TEN = { CONG_THEM: 'Cộng thêm', DEM_LAI_HOC: 'Đếm lại hộc', DON_LO: 'Dồn cả lô', GOP_LO: 'Gộp lô', THUOC_MOI: 'Thuốc mới',
-  BO_SUNG_CONG_THEM: 'Bổ sung (cộng)', BO_SUNG_DEM_LAI_HOC: 'Bổ sung (đếm lại hộc)', BO_SUNG_DON_LO: 'Bổ sung (dồn lô)' };
-const ST_TEN = { HIEU_LUC: 'Đã lưu', THAY_THE: 'Đã bị thay', HUY: 'Đã huỷ', CHO_DUYET: 'Chờ duyệt', TU_CHOI: 'Từ chối',
-  pending: 'Chờ gửi', sending: 'Đang gửi', need: 'Cần xử lý', error: 'Lỗi', done: 'Đã lưu' };
 
 
 // ---- Biểu tượng (Lucide, giấy phép ISC) ----

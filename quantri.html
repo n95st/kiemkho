@@ -16,7 +16,7 @@
   #menu { display: flex; flex-direction: column; gap: 4px; }
   @media (max-width: 900px) { #menu { flex-direction: row; flex-wrap: wrap; } }
   #menu button { justify-content: flex-start; }
-  #menu button.on { background: #18181b; border-color: #18181b; color: #fff; }
+  #menu button.on, #kqXem button.on { background: #18181b; border-color: #18181b; color: #fff; }
   #bang { min-width: 0; overflow-x: auto; }
   .cong-cu { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
   .cong-cu input, .cong-cu select { width: auto; max-width: 100%; height: 40px; }
@@ -27,8 +27,9 @@
   table.ds tbody tr { cursor: pointer; }
   table.ds tbody tr:hover td { background: #fafafa; }
   table.ds tbody tr.chon td { background: #dbeafe; }
-  #khung { min-width: 0; border: 1px solid #e4e4e7; border-radius: 12px; background: #fff; padding: 16px; }
+  #khung { min-width: 0; overflow-x: auto; border: 1px solid #e4e4e7; border-radius: 12px; background: #fff; padding: 16px; }
   #khung h2, #hop h2 { font-weight: 600; margin-bottom: 12px; }
+  #khung table.ds th, #khung table.ds td { white-space: normal; padding: 5px 6px; }
   .nut { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .muc-phu { margin-top: 24px; }
   #hop { border: 1px solid #e4e4e7; border-radius: 12px; padding: 20px; width: min(440px, calc(100vw - 32px)); }

@@ -52,3 +52,22 @@ test('tai_khoan_khong_co_pin', () => {
   assert.deepEqual(s.TAI_KHOAN, [['Mã TK', 'Tên', 'Vai trò', 'Trạng thái', 'Ghi chú'], ['TK04', 'Lan', 'Người đếm', 'Đã khoá', 'ca tối']]);
   assert.ok(!JSON.stringify(s).includes('444444'));
 });
+test('thong_ke_nguoi', () => {
+  const d = (tk, nguoi, ma, hoc, st, tgDay) => ({ tk, nguoi, ma, hoc, st, tgDay });
+  const rows = thongKeNguoi([
+    d('TK04', 'Lan', 'A', 'A 1', 'HIEU_LUC', '2026-10-30 08:05:00'), d('TK04', 'Lan', 'B', 'A 1', 'HIEU_LUC', '2026-10-30 09:00:00'),
+    d('TK04', 'Lan', 'A', 'A 2', 'HUY', '2026-10-30 08:30:00'), d('TK04', 'Lan', 'C', 'A 3', 'THAY_THE', '2026-10-30 07:59:00'),
+    d('TK05', 'Minh', 'A', 'B 1', 'CHO_DUYET', '2026-10-30 10:00:00'), d('TK05', 'Minh', 'A', 'B 1', 'TU_CHOI', '2026-10-30 10:10:00')]);
+  assert.deepEqual(rows[0], ['Mã TK', 'Người đếm', 'Dòng đang tính', 'Số mã', 'Số hộc', 'Chờ duyệt', 'Đã huỷ', 'Bị thay', 'Từ chối', 'Bắt đầu', 'Lần cuối']);
+  // counted mã and hộc come from the lines still in force; start and end span every line of the person
+  assert.deepEqual(rows.slice(1), [['TK04', 'Lan', 2, 2, 1, 0, 1, 1, 0, '30/10 07:59', '30/10 09:00'], ['TK05', 'Minh', 0, 0, 0, 1, 0, 0, 1, '30/10 10:00', '30/10 10:10']]);
+});
+test('so_dong_dem_giong_sheet_dong', () => {
+  const x = { id: 'D00001', tgDay: '2026-10-30 08:00:00', kho: 'CHAN', ma: 'A-1', ten: 'Thuốc A', lo: '00123', hsd: '15/03/2027', hoc: 'A 1', hop: 1, qc: 10, le: 0, sl: 10,
+    dvt: 'Viên', nguoi: 'Lan', tk: 'TK04', tt: 'CONG_THEM', st: 'HIEU_LUC', thayBoi: '', ghi: 'ghi', cb: '', req: 'r1', capNhat: '', seThay: '' };
+  assert.deepEqual(soDongDem([x]).DONG, taoSoExcel({ dong: [x] }).DONG);
+});
+test('so_nhat_ky', () => {
+  assert.deepEqual(soNhatKy([{ tg: '30/10/2026 08:00', tk: 'TK01', ten: 'IT', hanhDong: 'CHOT_KHO', chiTiet: 'CHAN', dot: 'DOT01' }]).NHAT_KY,
+    [['Thời điểm', 'Mã TK', 'Người', 'Thao tác', 'Chi tiết', 'Đợt'], ['30/10/2026 08:00', 'TK01', 'IT', 'Chốt kho', 'CHAN', 'DOT01']]);
+});
