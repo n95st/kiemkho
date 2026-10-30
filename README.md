@@ -99,7 +99,23 @@ Việc gộp nhánh vào `main` và đẩy lên GitHub chỉ làm khi người p
 1. Ở tab Quản lý bấm **Xuất Excel** của đợt, được file `.xlsx`.
 2. Chạy `python3 gop_kiem_kho.py chot --kho CHAN --db file.xlsx --ra CHOT_CHAN.xlsx` (tương tự kho LE), sau đó `nhap` như cũ.
 
-Chưa kiểm: bước này chưa chạy thử với file xuất từ bản Supabase. File xuất giữ cách đặt tên sheet và cột như bản cũ, nhưng số cột của sheet `TONG_HOP` phụ thuộc kho của đợt. Cần thử `gop_kiem_kho.py` với một file xuất thật trước ngày chốt đầu tiên.
+Chưa kiểm: bước này chưa chạy thử với file xuất từ bản Supabase. File xuất giữ cách đặt tên sheet và cột như bản cũ, nhưng số cột của sheet `TONG_HOP` phụ thuộc kho của đợt. Script `gop_kiem_kho.py` không nằm trong repo này.
+
+**Thử trước ngày chốt đầu tiên.** Người có script `gop_kiem_kho.py` làm theo các bước sau.
+
+1. Chọn một đợt có cả kho CHAN lẫn kho LE và đã có số đếm. Nếu chưa có đợt thật, dùng đợt cho tài khoản Tập đếm thử khoảng 10 thuốc. Trong 10 thuốc đó, nên có một thuốc chỉ ở kho chẵn, một thuốc chỉ ở kho lẻ và một thuốc có số lô bắt đầu bằng số 0 (ví dụ `00123`).
+2. Bấm **Xuất Excel đợt** (trên trang `quantri.html`, mục Đợt kiểm, hoặc tab Quản lý trên điện thoại).
+3. Mở file vừa xuất. Ở sheet `TONG_HOP_LO`, ghi lại số lượng của 3 thuốc nói ở bước 1.
+4. Chạy `python3 gop_kiem_kho.py chot --kho CHAN --db <file vừa xuất> --ra CHOT_CHAN.xlsx`, rồi chạy lại với `--kho LE`.
+5. Soát kết quả:
+   - Script chạy hết, không báo lỗi.
+   - Số lượng của 3 thuốc trong `CHOT_CHAN.xlsx` và `CHOT_LE.xlsx` khớp số đã ghi ở bước 3, đúng kho.
+   - Số lô bắt đầu bằng số 0 vẫn còn số 0 ở đầu.
+   - HSD đúng ngày, không lệch một ngày.
+6. Lặp lại bước 2 đến bước 5 với một đợt chỉ có một kho. Đợt một kho có sheet `TONG_HOP` ít cột hơn, nên đây là chỗ script dễ hỏng nhất.
+7. Chỉ chạy bước `nhap` vào iSOFH khi các bước trên đều đúng. Nếu iSOFH có môi trường thử thì chạy ở đó trước.
+
+Nếu có bước sai, ghi lại câu lỗi và tên sheet hoặc cột bị sai. Không đưa file Excel thật vào repo, vì repo công khai.
 
 ## 7. Sửa và thêm tính năng
 

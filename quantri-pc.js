@@ -87,7 +87,7 @@ async function dangNhap(pin) {
   if (!r.ok) return raLogin(r.error);
   if (r.role !== 'IT') return raLogin('Trang này chỉ dành cho IT');
   pinNho.set(pin);
-  const mo = r.dots.filter(d => d.st === 'MO'), d = (mo.length ? mo : r.dots).slice(-1)[0];   // dots come sorted by id
+  const mo = r.dots.filter(d => d.st === 'MO'), d = (mo.length ? mo : r.dots).slice(-1)[0];   // dots come in number order of their code (DOT99 before DOT100)
   $('login').classList.add('hidden'); $('main').classList.remove('hidden');
   $('pin').value = '';
   $('menu').innerHTML = MUC.map(m => `<button type="button" class="btn" data-muc="${m[0]}">${esc(m[1])}</button>`).join('');
