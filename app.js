@@ -1,6 +1,6 @@
 /* Kiểm kho iSOFH – web app (GitHub Pages) · dữ liệu lưu ở Supabase */
 'use strict';
-const APP_VER = '4.1.0';
+const APP_VER = '4.1.1';
 const $ = id => document.getElementById(id);
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('kk_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -820,7 +820,7 @@ async function loadQl() {
     $('qlKho').innerHTML = isIT() && S.dotInfo.st === 'MO' ? ks.map((k, i) => {
       const r = rs[i], chot = r.ok && r.trangThai === 'DA_CHOT';
       return `<button class="btn ${chot ? 'ok' : 'danger'}" data-kho="${esc(k)}" data-tt="${chot ? 'DANG_KIEM' : 'DA_CHOT'}">${chot ? ico('unlock') + 'Mở lại kho ' : ico('lock') + 'Chốt kho '}${esc(KHO_TEN[k])}</button>`;
-    }).join('') : '';
+    }).join('') : isIT() ? '' : `<button class="btn" data-dotxls="${esc(S.dot)}">${ico('file')}Xuất Excel</button>`;
   } catch (e) { $('qlProg').innerHTML = `<div class="box">${esc(e.message)}</div>`; }
   // tiến độ hộc
   try {
@@ -878,11 +878,16 @@ async function loadDots() {
         <span class="st ${d.st === 'MO' ? 'HIEU_LUC' : 'THAY_THE'}">${d.st === 'MO' ? 'Đang mở' : 'Đã đóng'}</span></div>
         <div class="small muted">Kho ${d.kho.map(k => esc(KHO_TEN[k])).join(' + ')} · tạo ${esc(d.ngay)}${d.soVoi ? ' · so với ' + esc(d.soVoi) : ''}${d.ghi ? ' · ' + esc(d.ghi) : ''}</div>
         <div class="qa">${d.id === S.dot ? '<span class="small font-medium text-emerald-700">Đang dùng</span>' : `<button class="btn small" data-dotgo="${esc(d.id)}">${ico('swap')}Chuyển sang</button>`}
-          ${safeUrl(d.url) ? `<a class="btn small" href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">${ico('file')}Mở file</a>` : ''}
+          <button class="btn small" data-dotxls="${esc(d.id)}">${ico('file')}Xuất Excel</button>
           <button class="btn small ${d.st === 'MO' ? 'danger' : 'ok'}" data-dotst="${esc(d.id)}" data-st="${d.st === 'MO' ? 'DONG' : 'MO'}">${d.st === 'MO' ? ico('lock') + 'Đóng đợt' : ico('unlock') + 'Mở lại'}</button></div></div>`).join('')}
-      <div class="qa mt-2">${safeUrl(r.hubUrl) ? `<a class="btn small" href="${esc(safeUrl(r.hubUrl))}" target="_blank" rel="noopener">${ico('file')}Mở file Trung tâm (PIN, danh mục, danh sách đợt)</a>` : ''}</div>
       <button class="btn primary mt-2 w-full" data-dotnew="1">${ico('plus')}Tạo đợt mới</button></div></details>`;
   } catch (e) { box.innerHTML = `<p class="msg">${esc(e.message)}</p>`; }
+}
+async function dotXuat(t) {
+  t.disabled = true;
+  try { await xuatExcel(t.dataset.dotxls); toast('Đã tạo file Excel', 'ok'); }
+  catch (e) { toast((e.isNet ? 'Cần có mạng: ' : '') + e.message, 'bad', null, 5000); }
+  finally { t.disabled = false; }
 }
 async function dotAction(t) {
   try {
@@ -890,7 +895,7 @@ async function dotAction(t) {
     if (t.dataset.dotst) {
       const d = S.dots.find(x => x.id === t.dataset.dotst) || { ten: t.dataset.dotst }, dong = t.dataset.st === 'DONG';
       const ok = await ask((dong ? 'Đóng' : 'Mở lại') + ' đợt "' + d.ten + '"?', dong
-        ? '<p>Sau khi đóng, <b>không ai nhập thêm được</b> vào đợt này (vẫn xem được). File dữ liệu giữ nguyên để tra lại hoặc tải về chốt/đổ iSOFH.</p>'
+        ? '<p>Sau khi đóng, <b>không ai nhập thêm được</b> vào đợt này (vẫn xem được). Dữ liệu giữ nguyên để tra lại; cần chốt hoặc đổ iSOFH thì bấm Xuất Excel.</p>'
         : '<p>Mở lại để mọi người nhập tiếp vào đợt này.</p>',
         [{ text: dong ? 'Đóng đợt' : 'Mở lại', icon: dong ? 'lock' : 'unlock', cls: dong ? 'danger' : 'primary', value: true }, { text: 'Huỷ', value: false }]);
       if (!ok) return;
@@ -932,7 +937,8 @@ async function taoDotForm() {
   } catch (e) { toast('Không tạo được đợt: ' + e.message, 'bad', null, 6000); }
 }
 $('tab-ql').addEventListener('click', async e => {
-  const t = e.target.closest('[data-open],[data-gop],[data-dd],[data-tm],[data-kho],[data-dotgo],[data-dotst],[data-dotnew]'); if (!t) return;
+  const t = e.target.closest('[data-open],[data-gop],[data-dd],[data-tm],[data-kho],[data-dotgo],[data-dotst],[data-dotnew],[data-dotxls]'); if (!t) return;
+  if (t.dataset.dotxls) return dotXuat(t);
   if (t.dataset.dotgo || t.dataset.dotst || t.dataset.dotnew) return dotAction(t);
   try {
     if (t.dataset.open) { switchTab('dem'); selectDrug(t.dataset.open); return; }
@@ -953,7 +959,7 @@ $('tab-ql').addEventListener('click', async e => {
     } else if (t.dataset.kho) {
       const chot = t.dataset.tt === 'DA_CHOT';
       const ok = await ask((chot ? 'Chốt' : 'Mở lại') + ' kho ' + KHO_TEN[t.dataset.kho] + '?',
-        chot ? '<p>Sau khi chốt, người đếm chỉ gửi được <b>phiếu bổ sung</b> (có lý do), IT duyệt mới được cộng. Nhớ tải file về chạy bước chốt/đổ iSOFH.</p>' : '<p>Mở lại để mọi người nhập bình thường.</p>',
+        chot ? '<p>Sau khi chốt, người đếm chỉ gửi được <b>phiếu bổ sung</b> (có lý do), IT duyệt mới được cộng. Cần chốt hoặc đổ iSOFH thì bấm Xuất Excel ở tab Quản lý.</p>' : '<p>Mở lại để mọi người nhập bình thường.</p>',
         [{ text: chot ? 'Chốt kho' : 'Mở lại', icon: chot ? 'lock' : 'unlock', cls: chot ? 'danger' : 'primary', value: true }, { text: 'Huỷ', value: false }]);
       if (!ok) return;
       const r = await api('datTrangThaiKho', { kho: t.dataset.kho, trangThai: t.dataset.tt }); if (!r.ok) throw new Error(r.error);

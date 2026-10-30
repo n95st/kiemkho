@@ -248,7 +248,40 @@ try {
     await t.waitForFunction(() => { const x = document.getElementById('qlCanXem').textContent; return x && !/Đang tải/.test(x); }, null, { timeout: 10000 });
     ok(await t.locator('#qlCfg [data-qt]').count() === 0, 'tổ trưởng có nút cấu hình');
     ok(!/Cấu hình/.test(await t.innerText('#tab-ql')), 'tổ trưởng thấy chữ Cấu hình');
+    await t.waitForSelector('#qlKho [data-dotxls]', { timeout: 10000 });      // tổ trưởng exports the current đợt from here
     await t.context().close();
+  });
+  await run('xuat_excel', async () => {
+    // one counted line with a numeric-looking lot and a real HSD, then export the đợt from the Quản lý tab
+    sql("insert into kk.dong (dot_id, so, tap, kho, ma, ten, lo, hsd, hoc, hop, qc, le, sl, dvt, nguoi, tk, thao_tac, trang_thai, req_id) " +
+        "values ('DOT01', 9001, false, 'CHAN', 'TT-0001', 'Paracetamol 500mg', '00123', date '2027-05-01', 'A 1', 1, 10, 0, 10, 'Viên', 'Lan', 'TK04', 'LUU', 'HIEU_LUC', 'xl-9001')");
+    const ten = sql("select ten from kk.dot where id = 'DOT01'");
+    const p = await newPage();
+    await vao(p, '111111');
+    await p.click('.tabs [data-tab="ql"]');
+    await p.waitForSelector('#qlDot [data-dotxls="DOT01"]', { timeout: 10000 });
+    const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 20000 }), p.click('#qlDot [data-dotxls="DOT01"]')]);
+    ok(dl.suggestedFilename() === 'KIEM-KHO-' + ten.replace(/[\\/:*?"<>|]/g, '-') + '.xlsx', 'tên file sai: ' + dl.suggestedFilename());
+    const file = join(dir, 'xuat.xlsx');
+    await dl.saveAs(file);
+    const out = execFileSync('python3', ['-c', `
+import sys, datetime
+from openpyxl import load_workbook
+wb = load_workbook(sys.argv[1])
+print(','.join(wb.sheetnames))
+ws = wb['DONG']
+print('|'.join(str(c.value) for c in ws[1]))
+r = ws[2]
+print(repr(r[5].value), r[5].data_type, repr(r[6].value), r[6].number_format)
+l1 = wb['LAN1']
+print(repr(l1['E2'].value))
+`, file], { encoding: 'utf8' }).trim().split('\n');
+    ok(out[0] === 'TONG_HOP,TONG_HOP_LO,DONG,HOC,THUOC_MOI,LAN1,DANH_MUC', 'tên sheet: ' + out[0]);
+    ok(out[1].startsWith('ID|Thời điểm|Kho|Mã|Tên thuốc|Số lô|HSD|Hộc|') && out[1].split('|').length === 23, 'dòng tiêu đề DONG: ' + out[1]);
+    ok(out[2] === "'00123' s datetime.datetime(2027, 5, 1, 0, 0) dd/mm/yyyy", 'ô Số lô/HSD: ' + out[2]);
+    ok(out[3] === 'datetime.datetime(2027, 3, 15, 0, 0)', 'HSD của LAN1: ' + out[3]);
+    ok(!p.errors.length, 'pageerror: ' + p.errors.join(' | '));
+    await p.context().close();
   });
 } finally {
   await browser.close();
