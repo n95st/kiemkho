@@ -22,13 +22,13 @@ const oTim = () => '<input id="tim" type="search" placeholder="Tìm" aria-label=
 
 // ===================================================================== khung chung
 /** Draws a table into hop. dong = rows of raw cell text; loc(i) says whether row i shows; chon(i) runs on a row click.
- * At most 500 matching rows are drawn; the count line reads "<shown> / <total>". dangChon = index of the selected row (or -1). */
+ * The count line reads "<shown> / <total>". dangChon = index of the selected row (or -1). */
 function veBang(hop, cot, dong, loc, chon, dangChon) {
   const hien = [];
   for (let i = 0; i < dong.length; i++) if (loc(i)) hien.push(i);
-  // ponytail: draws the first 500 matches only; the search box narrows the rest (fine at 5.000 rows)
+  // ponytail: draws every matching row (~150 ms for 6.000 rows on a full redraw); add paging if the lists grow well past that
   hop.innerHTML = `<div class="dem">${soVN(hien.length)} / ${soVN(dong.length)}</div><table class="ds"><thead><tr>${cot.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>`
-    + hien.slice(0, 500).map(i => `<tr data-i="${i}"${i === dangChon ? ' class="chon"' : ''}>${dong[i].map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') + '</tbody></table>';
+    + hien.map(i => `<tr data-i="${i}"${i === dangChon ? ' class="chon"' : ''}>${dong[i].map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') + '</tbody></table>';
   hop.querySelector('tbody').onclick = e => {
     const tr = e.target.closest('tr[data-i]');
     if (!tr || e.target.closest('button')) return;
@@ -168,14 +168,17 @@ async function sauKhiLuuTk(tk) {
 const DM = { list: [], key: [], chon: '', khos: [] };
 const dongLoi = (loi, so) => loi.length ? '<p class="msg">' + loi.map(x => `Dòng ${esc(so ? so[x.dong - 1] : x.dong)}: ${esc(x.error)}`).join('<br>') + '</p>' : '';
 const ketQua = html => hoi('Kết quả nhập', html, [{ text: 'Đóng', value: true, cls: 'primary' }]);
-/** Hidden file input behind a "Nhập từ Excel" button; nhap(file) runs on pick, its Error is shown in a dialog. */
+/** Hidden file input behind a "Nhập từ Excel" button; nhap(file) runs on pick, its Error is shown in a dialog.
+ * The đợt picker and the button stay disabled until the import ends, so the đợt cannot change under it. */
 const nutNhap = cls => `<button type="button" id="btnNhap" class="btn ${cls || ''}">Nhập từ Excel</button><input type="file" id="fileNhap" accept=".xlsx,.xls" class="hidden">`;
 function ganNhap(nhap) {
   $('btnNhap').onclick = () => $('fileNhap').click();
   $('fileNhap').onchange = async () => {
     const f = $('fileNhap').files[0];
     $('fileNhap').value = '';                                      // the same file can be picked again
-    if (f) try { await nhap(f); } catch (e) { await baoLoi(e); }
+    if (!f) return;
+    $('dot').disabled = $('btnNhap').disabled = true;
+    try { await nhap(f); } catch (e) { await baoLoi(e); } finally { $('dot').disabled = false; if ($('btnNhap')) $('btnNhap').disabled = false; }
   };
 }
 async function veDanhMuc() {
@@ -336,21 +339,22 @@ function veBangSs() {
 }
 /** All or nothing over the whole file: check-only call, confirm with per-kho consequences, then one real call for every kho. */
 async function nhapSoSanh(f) {
+  const dot = S.dot, info = S.dotInfo;                             // every call below names this đợt, whatever the header shows later
   const { tieuDe, list, so } = await qtDocExcel(f, 4);
   if (!dungTieuDe(tieuDe, LAN1_HEADER)) throw new Error('File không đúng mẫu số liệu so sánh');
   const vd = timDongViDu(list, so, 1);
   if (vd) throw new Error('Dòng ' + vd + ' là dòng ví dụ của file mẫu');
-  const { loi, nhieuKho } = tachTheoKho(list, so, S.dotInfo.kho);
+  const { loi, nhieuKho } = tachTheoKho(list, so, info.kho);
   if (loi.length) return ketQua('<p>Chưa nhập gì</p>' + dongLoi(loi));
   if (!nhieuKho.length) return ketQua('<p>Tệp không có dòng nào</p>');
   const gui = nhieuKho.map(k => ({ kho: k.kho, list: k.list }));
-  const kt = await goi('nhapSoSanh', { nhieuKho: gui, chiKiem: true }, 180000);
+  const kt = await goi('nhapSoSanh', { dot, nhieuKho: gui, chiKiem: true }, 180000);
   if (kt.loi.length) return ketQua('<p>Chưa nhập gì</p>' + dongLoi(doiDongLoi(kt.loi, nhieuKho)));
-  const dang = (await goi('dsSoSanh', { kho: '' })).list;
+  const dang = (await goi('dsSoSanh', { dot, kho: '' })).list;
   const xn = nhieuKho.map(k => `<p>Kho ${esc(k.kho)}: thay ${dang.filter(x => x[0] === k.kho).length} dòng đang có bằng ${k.list.length} dòng trong file</p>`).join('');
-  if (!await hoi('Nhập số liệu so sánh', xn, [{ text: 'Nhập', value: true, cls: 'danger' }, { text: 'Huỷ', value: false, cls: 'ghost' }])) return;
+  if (!await hoi('Nhập số liệu so sánh vào đợt ' + info.ten, xn, [{ text: 'Nhập', value: true, cls: 'danger' }, { text: 'Huỷ', value: false, cls: 'ghost' }])) return;
   let r;
-  try { r = await goi('nhapSoSanh', { nhieuKho: gui }, 180000); } catch (e) {
+  try { r = await goi('nhapSoSanh', { dot, nhieuKho: gui }, 180000); } catch (e) {
     if (!e.isNet) throw e;
     await taiSoSanh();                                             // each kho is either all old or all new: the table shows which
     return ketQua('<p class="msg">Không rõ đã nhập xong chưa</p>');

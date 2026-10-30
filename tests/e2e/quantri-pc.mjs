@@ -353,6 +353,7 @@ try {
     await moMuc(p, 'Danh mục thuốc');
     const n = Number(sql('select count(*) from kk.thuoc'));
     ok(await dem(p) === `${n.toLocaleString('vi-VN')} / ${n.toLocaleString('vi-VN')}`, 'số đếm: ' + await dem(p));
+    ok(await p.locator('#ds tbody tr').count() === n, 'bảng chỉ vẽ ' + await p.locator('#ds tbody tr').count() + ' / ' + n + ' dòng');
     const kq = await p.evaluate(() => {
       const o = document.getElementById('tim'), truoc = document.querySelector('#bang .dem').textContent, t0 = performance.now();
       o.value = 'thu 4999';
@@ -547,6 +548,32 @@ try {
     await p.click('#hop button:has-text("Nhập")');
     await hopCo(p, 'Không rõ đã nhập xong chưa');
     ok(goiCo(p, 'dsSoSanh').length > ds, 'không tải lại bảng sau khi mạng rớt');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('so_sanh_doi_dot_giua_chung', async () => {
+    sql("insert into kk.dot (id, ten, trang_thai, kho) values ('DOT03', 'Đợt ba', 'MO', '{CHAN,LE}'); insert into kk.dot_kho (dot_id, kho) values ('DOT03', 'CHAN'), ('DOT03', 'LE')");
+    const p = await newPage();
+    await vao(p, '111111');
+    await p.selectOption('#dot', 'DOT01');
+    await moMuc(p, 'Số liệu so sánh');
+    await p.route('**/rpc/api', async r => {                         // hold the check-only call so the đợt can change meanwhile
+      if ((r.request().postData() || '').includes('"chiKiem":true')) await new Promise(x => setTimeout(x, 1500));
+      return r.continue();
+    });
+    await p.setInputFiles('#fileNhap', SS_HAI_KHO);
+    await p.waitForTimeout(300);
+    await p.evaluate(() => chonDot('DOT03'));                        // the header picker moved to another đợt mid-import
+    await hopCo(p, 'thay');
+    const xn = await p.textContent('#hop');
+    await p.click('#hop button:has-text("Nhập")');
+    await hopCo(p, 'Kết quả');
+    const dot03 = sql("select count(*) from kk.so_sanh where dot_id = 'DOT03'");
+    sql("delete from kk.so_sanh where dot_id = 'DOT03'; delete from kk.dot_kho where dot_id = 'DOT03'; delete from kk.dot where id = 'DOT03'");
+    ok(dot03 === '0', 'file của DOT01 bị ghi vào DOT03: ' + dot03 + ' dòng');
+    ok(ssDot01() === 'CHAN|00123|15/03/2027|120,CHAN|L2||30.5,LE|V1|15/04/2027|7', 'kk.so_sanh DOT01: ' + ssDot01());
+    ok(xn.includes('Đợt thử'), 'hộp xác nhận không nêu tên đợt: ' + xn);
     sachLoi(p);
     await p.context().close();
   });
