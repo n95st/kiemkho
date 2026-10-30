@@ -34,6 +34,9 @@ const xlCong = (map, k, v) => map.set(k, (map.get(k) || 0) + (Number(v) || 0));
 /** Filename of the export: characters not allowed in file names become '-'. */
 const tenFileExcel = ten => ('KIEM-KHO-' + String(ten == null ? '' : ten).trim()).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-') + '.xlsx';
 
+/** One comparison row as the server sends it (dsSoSanh, xuatDot soSanh) -> Excel row: lot as text, HSD as a date serial. */
+const xlDongLan1 = r => r.map((c, i) => i === 3 ? String(c) : i === 4 ? xlNgay(c) : c);
+
 /** data = response of API xuatDot. Returns {sheetName: rows[][]} with the header as the first row of each sheet. */
 globalThis.taoSoExcel = function (data) {
   const khos = data.khos || [], live = (data.dong || []).filter(x => x.st === 'HIEU_LUC');
@@ -41,7 +44,7 @@ globalThis.taoSoExcel = function (data) {
     x.nguoi, x.tk, x.tt, x.st, x.thayBoi, x.ghi, x.cb, x.req, x.capNhat, x.seThay]);
   const hoc = (data.hoc || []).map(h => [h.kho, String(h.hoc), h.st, h.nguoi, xlGio(h.batDauDay), xlGio(h.xongLucDay), h.nguoiXong, h.ghi]);
   const thuocMoi = (data.thuocMoi || []).map(t => [t.id, xlGio(t.tgDay), t.maDeXuat, t.ten, t.dvtn, t.qc, t.dvt, t.kho, t.nguoi, t.st, t.maChinhThuc, t.ghi]);
-  const lan1 = (data.soSanh || []).map(r => r.map((c, i) => i === 3 ? String(c) : i === 4 ? xlNgay(c) : c));
+  const lan1 = (data.soSanh || []).map(xlDongLan1);
 
   // TONG_HOP: one row per danh mục drug; per kho: this đợt (sum of HIEU_LUC SL), comparison (sum of LAN1 SL), difference
   const demMap = new Map(), ssMap = new Map();
@@ -88,6 +91,49 @@ globalThis.xlSach = function (sheets) {
   });
   return wb;
 };
+
+// ===================================================================== desktop admin page (quantri.html): templates, list exports, import checks
+const DANH_MUC_MAU_HEADER = DANH_MUC_HEADER.slice(0, 7);
+// Template example rows: the Mã cell VIDU marks them, the import refuses a file that still has one
+const VIDU_DANH_MUC = ['VIDU', 'VÍ DỤ Paracetamol 500mg', 'Hộp', 10, 'Viên', 'CHAN', '8934567890123'];
+const VIDU_SO_SANH = ['CHAN', 'VIDU', 'VÍ DỤ Paracetamol 500mg', 'L001', '15/03/2027', 120, 'Viên', 'A 1', 'Lan'];
+
+/** list = rows of API danhMuc (7 cells; an 8th Nguồn cell is dropped). */
+function soDanhMuc(list) { return { DANH_MUC: [DANH_MUC_MAU_HEADER].concat(list.map(r => r.slice(0, 7))) }; }
+/** list = rows of API dsSoSanh. */
+function soSoSanh(list) { return { LAN1: [LAN1_HEADER].concat(list.map(xlDongLan1)) }; }
+/** list = API dsTaiKhoan; the PIN never goes into the file. */
+function soTaiKhoan(list) {
+  return { TAI_KHOAN: [['Mã TK', 'Tên', 'Vai trò', 'Trạng thái', 'Ghi chú']].concat(list.map(t => [t.tk, t.ten, t.roleTen, t.active ? 'Đang dùng' : 'Đã khoá', t.ghiChu])) };
+}
+/** Header row of a file equals the template header: cells trimmed, trailing blank cells ignored. */
+function dungTieuDe(tieuDe, mau) {
+  const t = tieuDe.map(c => String(c == null ? '' : c).trim());
+  while (t.length && t[t.length - 1] === '') t.pop();
+  return t.length === mau.length && t.every((c, i) => c === mau[i]);
+}
+/** File row number of the first row whose cotMa cell is VIDU (any case), 0 when none. */
+function timDongViDu(list, so, cotMa) {
+  const i = list.findIndex(r => String(r[cotMa] == null ? '' : r[cotMa]).trim().toUpperCase() === 'VIDU');
+  return i < 0 ? 0 : so[i];
+}
+/** Splits comparison rows by their Kho cell (ks = kho codes of the đợt). nhieuKho keeps first-seen kho order; each row drops its Kho cell. */
+function tachTheoKho(list, so, ks) {
+  const loi = [], nhieuKho = [];
+  list.forEach((r, i) => {
+    const goc = String(r[0] == null ? '' : r[0]).trim(), k = goc.toUpperCase();
+    if (!ks.includes(k)) return loi.push({ dong: so[i], error: 'Kho ' + (goc || '(trống)') + ' không có trong đợt này' });
+    let g = nhieuKho.find(x => x.kho === k);
+    if (!g) nhieuKho.push(g = { kho: k, list: [], so: [] });
+    g.list.push(r.slice(1)); g.so.push(so[i]);
+  });
+  return { loi, nhieuKho };
+}
+/** Server errors {kho, dong} (dong counts within that kho's list) -> file row numbers, in file order. */
+function doiDongLoi(loi, nhieuKho) {
+  return loi.map(x => { const g = nhieuKho.find(k => k.kho === x.kho); return { dong: g ? g.so[x.dong - 1] : x.dong, error: x.error }; })
+    .sort((a, b) => a.dong - b.dong);
+}
 
 /** Ask the server for the whole đợt and save it as KIEM-KHO-<tên đợt>.xlsx. Throws Error with a Vietnamese message. */
 async function xuatExcel(dotId) {

@@ -123,6 +123,7 @@ supabase db reset && supabase test db            # kiểm thử pgTAP trong supa
 bash tests/dong-thoi.sh                          # nhiều người ghi cùng lúc
 node --test tests/canxem.test.mjs tests/xuatexcel.test.mjs
 TZ=Asia/Ho_Chi_Minh node --test tests/excel-ngay.test.mjs
+TZ=Asia/Ho_Chi_Minh node --test tests/mauexcel.test.mjs
 python3 tools/test_nhap_tu_google_sheet.py
 node tests/e2e/smoke.mjs                         # cần Google Chrome
 node tests/e2e/quantri.mjs                       # cần Google Chrome
