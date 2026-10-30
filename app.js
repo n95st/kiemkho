@@ -1,7 +1,6 @@
 /* Kiểm kho iSOFH – web app (GitHub Pages) · dữ liệu lưu ở Supabase */
 'use strict';
 const APP_VER = '4.1.2';
-const $ = id => document.getElementById(id);
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('kk_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('kk_' + k, JSON.stringify(v)); } catch (e) {} },
@@ -66,10 +65,8 @@ function applyUserConfig() {
 }
 
 // ===================================================================== tiện ích
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Only link to Google Docs/Drive over https; anything else (javascript:, other hosts) is dropped.
 const safeUrl = u => { try { const x = new URL(u); return x.protocol === 'https:' && /^(docs|drive)\.google\.com$/.test(x.hostname) ? x.href : ''; } catch (e) { return ''; } };
-const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
 const loKey = s => String(s || '').toUpperCase().replace(/\s+/g, '').replace(/^[.\-_#:]+|[.\-_#:]+$/g, '');
 const hocKey = s => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
 const numv = id => { const v = $(id).value.trim().replace(',', '.'); return v === '' ? '' : Number(v); };
@@ -120,27 +117,6 @@ function ask(title, bodyHtml, buttons) {
     });
     $('modal').classList.remove('hidden');
   });
-}
-
-// ===================================================================== API
-async function api(action, data, timeout) {
-  const c = window.KK_CONFIG || {}, key = c.SUPABASE_KEY || '';
-  if (!c.SUPABASE_URL || !key) throw Object.assign(new Error('Chưa cấu hình máy chủ'), { isNet: true });   // keeps the queue pending
-  const headers = { 'Content-Type': 'application/json', apikey: key };
-  if (key.startsWith('eyJ')) headers.Authorization = 'Bearer ' + key;                                      // legacy JWT anon key only
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout || 30000);
-  let r;
-  try {
-    r = await fetch(c.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/api', { method: 'POST', signal: ctl.signal, headers,
-      body: JSON.stringify({ req: Object.assign({ action: action, pin: S.pin, dot: S.dot }, data || {}) }) });
-  } catch (e) {
-    throw Object.assign(new Error(e.name === 'AbortError' ? 'Mạng chậm – quá thời gian chờ' : 'Không kết nối được máy chủ'), { isNet: true });
-  } finally { clearTimeout(t); }
-  if (r.status >= 500 || r.status === 401 || r.status === 403 || r.status === 429)                          // incl. a paused project, gateway or rate limit
-    throw Object.assign(new Error('Không kết nối được máy chủ'), { isNet: true });
-  let j = null; try { j = JSON.parse(await r.text()); } catch (e) {}
-  if (r.ok && j !== null) return j;
-  throw new Error((j && j.message) || 'Máy chủ trả về không đúng');
 }
 
 // ===================================================================== DANH MỤC

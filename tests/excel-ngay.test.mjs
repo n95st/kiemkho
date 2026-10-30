@@ -7,8 +7,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 globalThis.XLSX = createRequire(import.meta.url)('../vendor/sheetjs/xlsx.full.min.js');
-globalThis.$ = () => ({ addEventListener() {} });               // quantri.js binds #qlCfg at load time
-new vm.Script(readFileSync(new URL('../quantri.js', import.meta.url), 'utf8')).runInThisContext();
+new vm.Script(readFileSync(new URL('../chung.js', import.meta.url), 'utf8')).runInThisContext();
 
 const serial = (d, m, y) => Date.UTC(y, m - 1, d) / 864e5 + 25569;      // 1900 date system, pure arithmetic
 const book = (cells, date1904) => {
@@ -20,15 +19,18 @@ const book = (cells, date1904) => {
 
 test('so_serial_ra_dung_ngay', () => {
   const want = [[15, 3, 2027], [1, 1, 2027], [31, 12, 2099], [29, 2, 2028]];
-  const rows = oExcelDoc(book(want.map(([d, m, y]) => serial(d, m, y))), 1);
+  const rows = oExcelDoc(book(want.map(([d, m, y]) => serial(d, m, y))), 1).slice(1);
   assert.deepEqual(rows.map(r => r[1]), ['15/03/2027', '01/01/2027', '31/12/2099', '29/02/2028']);
 });
 test('chu_giu_nguyen_va_so_o_cot_khac_thanh_chu', () => {
-  const rows = oExcelDoc(book(['15/04/2027', serial(1, 5, 2027)]), 1);
+  const rows = oExcelDoc(book(['15/04/2027', serial(1, 5, 2027)]), 1).slice(1);
   assert.equal(rows[0][1], '15/04/2027');
   assert.equal(oExcelSangChu(120, 5, 1, false), '120');
 });
 test('he_ngay_1904', () => {
-  const rows = oExcelDoc(book([serial(15, 3, 2027) - 1462], true), 1);
+  const rows = oExcelDoc(book([serial(15, 3, 2027) - 1462], true), 1).slice(1);
   assert.equal(rows[0][1], '15/03/2027');
+});
+test('doc_giu_dong_tieu_de', () => {
+  assert.deepEqual(oExcelDoc(book(['15/04/2027']), 1)[0], ['Mã', 'HSD']);
 });

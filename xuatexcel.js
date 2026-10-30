@@ -1,6 +1,6 @@
 /* Xuất Excel của đợt: cùng sheet và cột với file đợt Google Sheets cũ (legacy/Code.gs, setupDot_).
  * taoSoExcel(data) là hàm thuần (Node test được, không cần SheetJS); xuatExcel(dotId) gọi máy chủ rồi ghi file bằng SheetJS.
- * Dùng các hàm chung đã có: api (app.js), qtTaiSheetJS (quantri.js). */
+ * Dùng các hàm trong chung.js: api, qtTaiSheetJS. */
 'use strict';
 
 // Sheet order follows the legacy DOT_SHEETS list (TONG_HOP first), restricted to the sheets the export carries

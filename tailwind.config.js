@@ -1,6 +1,6 @@
 /** Tailwind cho web app Kiểm kho iSOFH. Build: npx tailwindcss -c tailwind.config.js -i src/input.css -o app.css --minify */
 module.exports = {
-  content: ['index.html', 'app.js', 'quantri.js', 'huong-dan.html'],
+  content: ['index.html', 'app.js', 'chung.js', 'quantri.js', 'quantri.html', 'quantri-pc.js', 'huong-dan.html'],
   theme: {
     extend: {
       fontFamily: {
