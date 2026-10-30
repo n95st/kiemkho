@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hướng dẫn kiểm kho iSOFH</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="app.css?v=3">
+<link rel="stylesheet" href="app.css?v=9">
 <style>
   @page { size: A4; margin: 10mm; }
   @media print { .noprint { display: none !important; } body { background: #fff !important; } .sheet { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; } }
@@ -73,7 +73,7 @@
   <div id="pinGrid" class="pingrid"></div>
 </main>
 
-<script src="config.js?v=3"></script>
+<script src="config.js?v=9"></script>
 <script src="vendor/qrcode/qrcode.js"></script>
 <script>
 const appUrl = new URL('./', location.href).href;
@@ -84,11 +84,14 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const get = k => { try { return JSON.parse(localStorage.getItem('kk_' + k)); } catch (e) { return null; } };
 async function loadPins() {
   const msg = document.getElementById('pinMsg');
-  const api = (window.KK_CONFIG && KK_CONFIG.API_URL) || get('api'), pin = get('pin');
-  if (!api || !pin) { msg.textContent = 'Đăng nhập app bằng tài khoản IT trên máy này trước, rồi mở lại trang này.'; return; }
+  const c = window.KK_CONFIG || {}, key = c.SUPABASE_KEY || '', pin = get('pin');
+  if (!c.SUPABASE_URL || !key || !pin) { msg.textContent = 'Đăng nhập app bằng tài khoản IT trên máy này trước, rồi mở lại trang này.'; return; }
   try {
-    const r = await (await fetch(api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'dsTaiKhoan', pin: pin }) })).json();
-    if (!r.ok) throw new Error(r.error);
+    const headers = { 'Content-Type': 'application/json', apikey: key };
+    if (key.startsWith('eyJ')) headers.Authorization = 'Bearer ' + key;   // legacy JWT anon key only
+    const res = await fetch(c.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/api', { method: 'POST', headers, body: JSON.stringify({ req: { action: 'dsTaiKhoan', pin: pin } }) });
+    const r = await res.json();
+    if (!res.ok || !r.ok) throw new Error(r.error || r.message || 'Máy chủ trả về không đúng');
     const qr = qrSvg(appUrl, 3);
     document.getElementById('pinGrid').innerHTML = r.list.filter(u => u.active).map(u => `<div class="pincard">
       <div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="text-[11px] uppercase tracking-wider text-zinc-500">${esc(u.tk)} · ${esc(u.roleTen)}</div>
