@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="app.css?v=4">
+<link rel="stylesheet" href="app.css?v=5">
 </head>
 <body>
 
@@ -19,10 +19,6 @@
     <div class="logo"><i data-i="package"></i></div>
     <h1>Kiểm kho iSOFH</h1>
     <p class="muted mt-1 text-sm" id="loginDot">Nhập mã PIN được IT cấp</p>
-    <div id="apiBox" class="field hidden mt-4">
-      <label for="apiUrl">Link API (Apps Script – IT dán 1 lần)</label>
-      <input id="apiUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
-    </div>
     <input id="pin" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="••••••" autocomplete="one-time-code" aria-label="Mã PIN">
     <button id="btnLogin" class="btn primary big">Vào</button>
     <p id="loginMsg" class="msg mt-3"></p>
@@ -183,8 +179,9 @@
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 
-<script src="config.js?v=4"></script>
-<script src="ocrparse.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="ocrparse.js?v=5"></script>
+<script src="canxem.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

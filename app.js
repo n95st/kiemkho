@@ -1,14 +1,14 @@
-/* Kiểm kho iSOFH – web app (GitHub Pages) · dữ liệu lưu ở Google Sheets qua Apps Script */
+/* Kiểm kho iSOFH – web app (GitHub Pages) · dữ liệu lưu ở Supabase */
 'use strict';
-const APP_VER = '3.0.0';
+const APP_VER = '4.0.0';
 const $ = id => document.getElementById(id);
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('kk_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('kk_' + k, JSON.stringify(v)); } catch (e) {} },
   del(k) { try { localStorage.removeItem('kk_' + k); } catch (e) {} },
 };
-const DVT_LIST = ['Viên', 'Gói', 'Ống', 'Chai', 'Lọ', 'Tuýp', 'Hộp', 'Vỉ', 'Miếng', 'Cái', 'Bịch', 'Túi', 'Tép', 'Que', 'Bộ', 'Hũ', 'Bình', 'Can', 'Máy', 'Cuộn', 'Đôi', 'Liều'];
-const KHO_TEN = { CHAN: 'CHẴN', LE: 'LẺ' };
+let DVT_LIST = ['Viên', 'Gói', 'Ống', 'Chai', 'Lọ', 'Tuýp', 'Hộp', 'Vỉ', 'Miếng', 'Cái', 'Bịch', 'Túi', 'Tép', 'Que', 'Bộ', 'Hũ', 'Bình', 'Can', 'Máy', 'Cuộn', 'Đôi', 'Liều'];
+let KHO_TEN = { CHAN: 'CHẴN', LE: 'LẺ' };          // defaults until the server sends S.user.khos / dvt (see applyUserConfig)
 const TT_TEN = { CONG_THEM: 'Cộng thêm', DEM_LAI_HOC: 'Đếm lại hộc', DON_LO: 'Dồn cả lô', GOP_LO: 'Gộp lô', THUOC_MOI: 'Thuốc mới',
   BO_SUNG_CONG_THEM: 'Bổ sung (cộng)', BO_SUNG_DEM_LAI_HOC: 'Bổ sung (đếm lại hộc)', BO_SUNG_DON_LO: 'Bổ sung (dồn lô)' };
 const ST_TEN = { HIEU_LUC: 'Đã lưu', THAY_THE: 'Đã bị thay', HUY: 'Đã huỷ', CHO_DUYET: 'Chờ duyệt', TU_CHOI: 'Từ chối',
@@ -55,6 +55,15 @@ const S = { pin: LS.get('pin', ''), user: LS.get('user', null), kho: LS.get('kho
   trangThai: LS.get('trangThai', {}), scanGtin: '', pendingScan: null,
   dot: LS.get('dot', ''), dotInfo: LS.get('dotInfo', null), dots: LS.get('dots', []) };
 let Q = LS.get('queue', []);
+/** Kho names, unit list and the lot/HSD thresholds come from the server (kk.a_login); keep the defaults when an old cached user lacks them. */
+function applyUserConfig() {
+  const u = S.user || {};
+  if (Array.isArray(u.khos) && u.khos.length) KHO_TEN = Object.fromEntries(u.khos.map(k => [k.ma, k.tenNgan]));
+  if (Array.isArray(u.dvt) && u.dvt.length) DVT_LIST = u.dvt;
+  const nd = $('nDvt'), keep = nd.value; nd.innerHTML = '';
+  DVT_LIST.forEach(v => { const o = document.createElement('option'); o.value = o.textContent = v; nd.appendChild(o); });
+  if (DVT_LIST.includes(keep)) nd.value = keep;
+}
 
 // ===================================================================== tiện ích
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -81,9 +90,12 @@ function parseHsd(s, monthMode) {
   }
   return null;
 }
+const loNghiWords = () => Array.isArray(S.user && S.user.loNghi) ? S.user.loNghi : ['MFG', 'MFD', 'NSX', 'EXP', 'HSD', 'LOT', 'BATCH'];
+const hsdCanhBao = () => { const n = Number(S.user && S.user.hsdCanhBao); return n > 0 ? n : 90; };
 function loNghi(lo) {
   if (!lo) return '';
-  const m = lo.match(/MFG|MFD|NSX|EXP|HSD|LOT|BATCH/i); if (m) return 'Số lô có chữ "' + m[0] + '" – có thể đọc nhầm dòng ngày SX/HSD';
+  const words = loNghiWords().filter(Boolean).map(w => String(w).replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&'));
+  const m = words.length ? lo.match(new RegExp(words.join('|'), 'i')) : null; if (m) return 'Số lô có chữ "' + m[0] + '" – có thể đọc nhầm dòng ngày SX/HSD';
   if (/^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(lo)) return 'Số lô trông giống ngày tháng';
   if (loKey(lo).length < 3) return 'Số lô quá ngắn';
   return '';
@@ -111,20 +123,23 @@ function ask(title, bodyHtml, buttons) {
 }
 
 // ===================================================================== API
-function apiUrl() { return (window.KK_CONFIG && window.KK_CONFIG.API_URL) || LS.get('api', ''); }
 async function api(action, data, timeout) {
-  const url = apiUrl(); if (!url) throw Object.assign(new Error('Chưa có link API'), { isNet: true });
+  const c = window.KK_CONFIG || {}, key = c.SUPABASE_KEY || '';
+  if (!c.SUPABASE_URL || !key) throw Object.assign(new Error('Chưa cấu hình máy chủ'), { isNet: true });   // keeps the queue pending
+  const headers = { 'Content-Type': 'application/json', apikey: key };
+  if (key.startsWith('eyJ')) headers.Authorization = 'Bearer ' + key;                                      // legacy JWT anon key only
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout || 30000);
   let r;
   try {
-    r = await fetch(url, { method: 'POST', redirect: 'follow', signal: ctl.signal,
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: action, pin: S.pin, dot: S.dot }, data || {})) });
+    r = await fetch(c.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/api', { method: 'POST', signal: ctl.signal, headers,
+      body: JSON.stringify({ req: Object.assign({ action: action, pin: S.pin, dot: S.dot }, data || {}) }) });
   } catch (e) {
     throw Object.assign(new Error(e.name === 'AbortError' ? 'Mạng chậm – quá thời gian chờ' : 'Không kết nối được máy chủ'), { isNet: true });
   } finally { clearTimeout(t); }
-  const txt = await r.text();
-  try { return JSON.parse(txt); }
-  catch (e) { throw new Error('Máy chủ trả về không đúng (kiểm tra triển khai Apps Script ở chế độ "Bất kỳ ai")'); }
+  if (r.status >= 500) throw Object.assign(new Error('Không kết nối được máy chủ'), { isNet: true });      // incl. a paused project
+  let j = null; try { j = JSON.parse(await r.text()); } catch (e) {}
+  if (r.ok && j !== null) return j;
+  throw new Error((j && j.message) || 'Máy chủ trả về không đúng');
 }
 
 // ===================================================================== DANH MỤC
@@ -163,9 +178,7 @@ function search(q) {
 
 // ===================================================================== ĐĂNG NHẬP
 async function doLogin() {
-  const pin = $('pin').value.trim(), api0 = $('apiUrl').value.trim();
-  if (!apiUrl() && api0) LS.set('api', api0);
-  if (!apiUrl()) { $('loginMsg').textContent = 'Dán link API do IT gửi'; return; }
+  const pin = $('pin').value.trim();
   if (!pin) { $('loginMsg').textContent = 'Nhập mã PIN'; return; }
   $('btnLogin').disabled = true; $('loginMsg').className = 'msg'; $('loginMsg').textContent = 'Đang kiểm tra…';
   S.pin = pin;
@@ -188,10 +201,10 @@ function applyLogin(r) {
   S.dots = r.dots || []; LS.set('dots', S.dots);
   if (r.dotInfo) setDot(r.dotInfo);
   else if (S.dot) { S.dotInfo = null; LS.set('dotInfo', null); }
-  renderHeader(); $('tabQl').classList.toggle('hidden', !canAll());
+  applyUserConfig(); renderHeader(); $('tabQl').classList.toggle('hidden', !canAll());
 }
 const dotOk = () => S.dotInfo && S.dotInfo.id === S.dot && S.dots.some(d => d.id === S.dot);
-const khoOfDot = () => (S.dotInfo && S.dotInfo.kho) || ['CHAN', 'LE'];
+const khoOfDot = () => (S.dotInfo && S.dotInfo.kho) || Object.keys(KHO_TEN);
 async function enterMain() {
   $('login').classList.add('hidden'); $('main').classList.remove('hidden');
   renderHeader(); renderSync();
@@ -213,7 +226,7 @@ async function revalidate() {               // mở app lại khi đã đăng nh
 
 // ===================================================================== HEADER / KHO / HỘC
 function renderHeader() {
-  $('btnKho').innerHTML = '<span class="hide-xs">Kho </span>' + (KHO_TEN[S.kho] || '?');
+  $('btnKho').innerHTML = '<span class="hide-xs">Kho </span>' + esc(KHO_TEN[S.kho] || '?');
   $('btnHoc').innerHTML = ico('pin') + (S.hoc ? '<span class="hide-xs">Hộc&nbsp;</span><span class="truncate">' + esc(S.hoc) + '</span>' : 'Chọn hộc!');
   $('btnHoc').classList.toggle('empty', !S.hoc);
   $('who').innerHTML = (S.dotInfo ? ico('calendar') + '<b>' + esc(S.dotInfo.ten) + '</b> · ' : '') + esc(S.user ? S.user.ten : '');
@@ -273,8 +286,8 @@ async function chooseKho(auto) {
   const ks = khoOfDot();
   let v;
   if (ks.length === 1) { v = ks[0]; if (!auto && S.kho === v) toast('Đợt này chỉ kiểm kho ' + KHO_TEN[v]); }
-  else v = await ask('Đang kiểm kho nào?', '<p class="muted">Chọn đúng kho đang đứng đếm. Đổi lại được bằng nút Kho ở trên.</p>', [
-    { text: 'Kho CHẴN', icon: 'box', cls: 'primary', value: 'CHAN' }, { text: 'Kho LẺ', icon: 'pill', cls: 'ghost', value: 'LE' }]);
+  else v = await ask('Đang kiểm kho nào?', '<p class="muted">Chọn đúng kho đang đứng đếm. Đổi lại được bằng nút Kho ở trên.</p>',
+    ks.map((k, i) => ({ text: 'Kho ' + KHO_TEN[k], icon: i % 2 ? 'pill' : 'box', cls: i ? 'ghost' : 'primary', value: k })));
   if (v !== S.kho) { S.kho = v; LS.set('kho', v); S.lineCache = {}; if (S.drug) selectDrug(S.drug.ma); if (S.hoc) { S.hoc = ''; LS.set('hoc', ''); renderHeader(); chooseHoc(); } }
   renderHeader(); refreshProg();
 }
@@ -344,7 +357,7 @@ function renderResults() {
   const q = $('q').value;
   const list = q.trim() ? search(q) : [];
   $('results').innerHTML = list.map(o => `<div class="res${o.kho && o.kho !== S.kho ? ' other' : ''}" data-ma="${esc(o.ma)}">
-      <b>${esc(o.ten)}</b><div class="ma">${esc(o.ma)} · ${esc(o.dvtn ? o.dvtn + ' ' + (o.qc || '') + ' ' + o.dvt : o.dvt)}${o.kho && o.kho !== S.kho ? ' · <span class="text-amber-700">thuộc kho ' + KHO_TEN[o.kho] + '</span>' : ''}</div></div>`).join('')
+      <b>${esc(o.ten)}</b><div class="ma">${esc(o.ma)} · ${esc(o.dvtn ? o.dvtn + ' ' + (o.qc || '') + ' ' + o.dvt : o.dvt)}${o.kho && o.kho !== S.kho ? ' · <span class="text-amber-700">thuộc kho ' + esc(KHO_TEN[o.kho]) + '</span>' : ''}</div></div>`).join('')
     + (q.trim().length >= 2 ? `<div class="res other" data-new="1"><b class="flex items-center gap-1.5">${ico('plus')} Không thấy? Báo thuốc chưa có trong danh mục</b><div class="ma">Gửi IT duyệt, số lượng vẫn được giữ</div></div>` : '');
   $('card').classList.toggle('hidden', !!q.trim() || !S.drug);
   $('hint').classList.toggle('hidden', !!S.drug || !!q.trim());
@@ -506,7 +519,7 @@ function checks(inp) {
   const lotDvt = g && (g.live[0] || g.pend[0] || {}).dvt;
   if (lotDvt && inp.dvt !== lotDvt) warns.push('Lô này đang ghi theo ' + lotDvt + ', bạn đang nhập ' + inp.dvt);
   const ln = loNghi(inp.lo); if (ln) warns.push(ln);
-  if (hsd) { const days = (hsd - new Date()) / 864e5; if (days < 0) warns.push('HSD đã QUÁ HẠN'); else if (days < 90) warns.push('HSD còn dưới 3 tháng'); }
+  if (hsd) { const days = (hsd - new Date()) / 864e5; if (days < 0) warns.push('HSD đã QUÁ HẠN'); else if (days < hsdCanhBao()) warns.push('HSD còn dưới ' + hsdCanhBao() + ' ngày'); }
   if (g && hsd && Object.keys(g.hsd).length && !g.hsd[fmtDate(hsd)]) warns.push('HSD khác với HSD đã ghi của lô (' + Object.keys(g.hsd).join(', ') + ')');
   if (!noQty && inp.sl === 0) warns.push('Số lượng = 0 (ghi nhận hết hàng)');
   return { errs: errs.filter((v, i, a) => a.indexOf(v) === i), warns: warns, hsd: hsd, g: g };
@@ -571,7 +584,7 @@ async function save(thaoTac) {
     if (!ok) { $('qc').focus(); return; }
   }
   if (d.kho && d.kho !== S.kho) {
-    const ok = await ask('Thuốc của kho ' + KHO_TEN[d.kho], `<p>Danh mục ghi <b>${esc(d.ten)}</b> thuộc kho ${KHO_TEN[d.kho]}. Bạn chắc chắn hàng này đang nằm ở kho ${KHO_TEN[S.kho]}?</p>`,
+    const ok = await ask('Thuốc của kho ' + KHO_TEN[d.kho], `<p>Danh mục ghi <b>${esc(d.ten)}</b> thuộc kho ${esc(KHO_TEN[d.kho])}. Bạn chắc chắn hàng này đang nằm ở kho ${KHO_TEN[S.kho]}?</p>`,
       [{ text: 'Đúng, đang ở kho ' + KHO_TEN[S.kho], cls: 'primary', value: true }, { text: 'Huỷ', value: false }]);
     if (!ok) return;
   }
@@ -702,7 +715,7 @@ async function loadToi() {
       : it.state === 'error' ? `<button class="btn small" data-q="retry" data-r="${it.reqId}">Gửi lại</button><button class="btn small danger" data-q="drop" data-r="${it.reqId}">Bỏ</button>` : '';
     const edit = it.state !== 'sending' ? `<button class="btn small" data-q="edit" data-r="${it.reqId}">${ico('rotate')}Sửa</button>` : '';
     return `<div class="item"><div class="h"><span>${esc(it.ten)}</span><span class="st ${it.state}">${ST_TEN[it.state]}</span></div>
-      <div class="s">${p.dot && p.dot !== S.dot ? '<b>' + esc(dotTen(p.dot)) + '</b> · ' : ''}Kho ${KHO_TEN[p.kho]} · ${esc(p.hoc)} · lô ${esc(p.lo)} · ${esc(p.hsd)} · <b>${fmtN(it.sl)} ${esc(p.dvt)}</b></div>
+      <div class="s">${p.dot && p.dot !== S.dot ? '<b>' + esc(dotTen(p.dot)) + '</b> · ' : ''}Kho ${esc(KHO_TEN[p.kho])} · ${esc(p.hoc)} · lô ${esc(p.lo)} · ${esc(p.hsd)} · <b>${fmtN(it.sl)} ${esc(p.dvt)}</b></div>
       ${it.error ? `<div class="s text-red-600">${esc(it.error)}</div>` : ''}<div class="b">${edit}${btns}</div></div>`;
   }).join('');
   $('toiList').innerHTML = html + '<p class="muted small">Đang tải các dòng đã lưu…</p>';
@@ -801,17 +814,17 @@ async function loadQl() {
   if (!$('qlProg').innerHTML) $('qlProg').innerHTML = '<div class="box muted">Đang tải…</div>';
   try {
     const ks = khoOfDot(), rs = await Promise.all(ks.map(k => api('tienDo', { kho: k })));
-    $('qlProg').innerHTML = ks.map((k, i) => { const r = rs[i]; return r.ok ? `<div class="box"><div class="flex items-center gap-1.5 font-medium">Kho ${KHO_TEN[k]} ${r.trangThai === 'DA_CHOT' ? ico('lock', 'text-red-600') : ''}</div>
+    $('qlProg').innerHTML = ks.map((k, i) => { const r = rs[i]; return r.ok ? `<div class="box"><div class="flex items-center gap-1.5 font-medium">Kho ${esc(KHO_TEN[k])} ${r.trangThai === 'DA_CHOT' ? ico('lock', 'text-red-600') : ''}</div>
       <b>${r.soMa}</b> mã · ${r.soDong} dòng<br><span class="muted small">${r.soVoi && r.lan1 ? esc(r.soVoi) + ' có ' + r.lan1 + ' mã – đợt này đã đếm ' + r.lan1DaDemLai : 'Không có số liệu so sánh'}${r.choDuyet ? ' · ' + r.choDuyet + ' chờ duyệt' : ''}</span></div>` : `<div class="box">${esc(r.error)}</div>`; }).join('');
     $('qlKho').innerHTML = isIT() && S.dotInfo.st === 'MO' ? ks.map((k, i) => {
       const r = rs[i], chot = r.ok && r.trangThai === 'DA_CHOT';
-      return `<button class="btn ${chot ? 'ok' : 'danger'}" data-kho="${k}" data-tt="${chot ? 'DANG_KIEM' : 'DA_CHOT'}">${chot ? ico('unlock') + 'Mở lại kho ' : ico('lock') + 'Chốt kho '}${KHO_TEN[k]}</button>`;
+      return `<button class="btn ${chot ? 'ok' : 'danger'}" data-kho="${k}" data-tt="${chot ? 'DANG_KIEM' : 'DA_CHOT'}">${chot ? ico('unlock') + 'Mở lại kho ' : ico('lock') + 'Chốt kho '}${esc(KHO_TEN[k])}</button>`;
     }).join('') : '';
   } catch (e) { $('qlProg').innerHTML = `<div class="box">${esc(e.message)}</div>`; }
   // tiến độ hộc
   try {
     const h = await api('dsHoc', { kho: S.kho });
-    if (h.ok) $('qlHoc').innerHTML = `<details${h.chua || h.dang ? ' open' : ''}><summary>${ico('pin', 'text-zinc-500')} Hộc kho ${KHO_TEN[S.kho]}: ${h.xong} xong · ${h.dang} đang · ${h.chua} chưa nhận</summary><div class="inner">
+    if (h.ok) $('qlHoc').innerHTML = `<details${h.chua || h.dang ? ' open' : ''}><summary>${ico('pin', 'text-zinc-500')} Hộc kho ${esc(KHO_TEN[S.kho])}: ${h.xong} xong · ${h.dang} đang · ${h.chua} chưa nhận</summary><div class="inner">
       ${h.list.map(x => `<div class="qitem flex items-center justify-between gap-2"><span><b>${esc(x.hoc)}</b> <span class="muted small">${esc((x.nguoiDem || []).join(', ') || x.nguoi || '')}${x.soDong ? ' · ' + x.soDong + ' dòng, ' + x.soMa + ' mã' : ''}</span></span><span class="st ${x.st === 'XONG' ? 'HIEU_LUC' : x.st === 'DANG_DEM' ? 'CHO_DUYET' : 'THAY_THE'}">${HOC_ST_TEN[x.st]}</span></div>`).join('') || '<p class="muted small py-2">Chưa có hộc nào. Có thể khai trước danh sách hộc ở sheet HOC (Kho, Hộc, CHUA_NHAN).</p>'}
     </div></details>`;
   } catch (e) {}
@@ -826,7 +839,7 @@ async function loadQl() {
           ${t.maDeXuat ? `<div class="small">Mã đề xuất: ${esc(t.maDeXuat)}</div>` : ''}
           ${isIT() ? `<div class="qa"><input data-ma-for="${esc(t.id)}" value="${esc(t.maDeXuat)}" placeholder="Mã iSOFH chính thức">
           <button class="btn small ok" data-tm="${esc(t.id)}" data-ok="1">Duyệt</button><button class="btn small danger" data-tm="${esc(t.id)}" data-ok="">Từ chối</button></div>` : ''}</div>`).join('')}
-        ${dongBs.map(l => `<div class="qitem"><b>${esc(l.id)}</b> ${esc(l.ten)} · kho ${KHO_TEN[l.kho]} · ${esc(l.hoc)} · lô ${esc(l.lo)} · <b>${fmtN(l.sl)} ${esc(l.dvt)}</b> · ${esc(TT_TEN[l.tt] || l.tt)}
+        ${dongBs.map(l => `<div class="qitem"><b>${esc(l.id)}</b> ${esc(l.ten)} · kho ${esc(KHO_TEN[l.kho])} · ${esc(l.hoc)} · lô ${esc(l.lo)} · <b>${fmtN(l.sl)} ${esc(l.dvt)}</b> · ${esc(TT_TEN[l.tt] || l.tt)}
           <div class="small muted">${esc(l.nguoi)} · ${esc(l.tg)} · Lý do: ${esc(l.ghi)}${l.seThay ? ' · sẽ thay ' + esc(l.seThay) : ''}</div>
           ${isIT() ? `<div class="qa"><button class="btn small ok" data-dd="${esc(l.id)}" data-ok="1">Duyệt</button><button class="btn small danger" data-dd="${esc(l.id)}" data-ok="">Từ chối</button></div>` : ''}</div>`).join('')}
       </div></details>`;
@@ -835,8 +848,10 @@ async function loadQl() {
   // cần xem
   $('qlCanXem').innerHTML = '<p class="muted">Đang tải danh sách cần xem…</p>';
   try {
-    const r = await api('canXem', { kho: S.kho });
-    if (!r.ok) throw new Error(r.error);
+    const raw = await api('canXemDuLieu', { kho: S.kho });
+    if (!raw.ok) throw new Error(raw.error);
+    const khoTen = Object.fromEntries(((S.user && S.user.khos) || []).map(k => [k.ma, k.ten]));
+    const r = tinhCanXem(raw, { khoTen: Object.assign({}, KHO_TEN, khoTen), loNghi: loNghiWords() });
     const groups = {};
     r.items.forEach(x => (groups[x.loai] = groups[x.loai] || []).push(x));
     const order = ['HSD_KHAC', 'CUNG_HOC_KHAC_NGUOI', 'LO_GAN_GIONG', 'QC_KHAC', 'LO_NGHI', 'SAI_KHO', 'NHIEU_HOC'];
@@ -860,7 +875,7 @@ async function loadDots() {
     box.innerHTML = `<details open><summary>${ico('calendar', 'text-zinc-500')} Đợt kiểm (${r.list.length})</summary><div class="inner">
       ${r.list.slice().reverse().map(d => `<div class="qitem"><div class="flex items-center justify-between gap-2"><span><b>${esc(d.ten)}</b> <span class="muted small">${esc(d.id)}</span></span>
         <span class="st ${d.st === 'MO' ? 'HIEU_LUC' : 'THAY_THE'}">${d.st === 'MO' ? 'Đang mở' : 'Đã đóng'}</span></div>
-        <div class="small muted">Kho ${d.kho.map(k => KHO_TEN[k]).join(' + ')} · tạo ${esc(d.ngay)}${d.soVoi ? ' · so với ' + esc(d.soVoi) : ''}${d.ghi ? ' · ' + esc(d.ghi) : ''}</div>
+        <div class="small muted">Kho ${d.kho.map(k => esc(KHO_TEN[k])).join(' + ')} · tạo ${esc(d.ngay)}${d.soVoi ? ' · so với ' + esc(d.soVoi) : ''}${d.ghi ? ' · ' + esc(d.ghi) : ''}</div>
         <div class="qa">${d.id === S.dot ? '<span class="small font-medium text-emerald-700">Đang dùng</span>' : `<button class="btn small" data-dotgo="${esc(d.id)}">${ico('swap')}Chuyển sang</button>`}
           ${safeUrl(d.url) ? `<a class="btn small" href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">${ico('file')}Mở file</a>` : ''}
           <button class="btn small ${d.st === 'MO' ? 'danger' : 'ok'}" data-dotst="${esc(d.id)}" data-st="${d.st === 'MO' ? 'DONG' : 'MO'}">${d.st === 'MO' ? ico('lock') + 'Đóng đợt' : ico('unlock') + 'Mở lại'}</button></div></div>`).join('')}
@@ -898,17 +913,15 @@ async function taoDotForm() {
   const opts = S.dots.slice().reverse().map(d => `<option value="${esc(d.id)}"${d.id === S.dot ? ' selected' : ''}>${esc(d.ten)}</option>`).join('');
   const body = `<div class="field"><label for="dTen">Tên đợt *</label><input id="dTen" value="${esc(def)}" autocomplete="off"></div>
     <div class="field"><label>Kiểm kho</label><div class="flex gap-4">
-      <label class="tiny"><input type="checkbox" id="dChan" checked><span>Kho CHẴN</span></label><label class="tiny"><input type="checkbox" id="dLe" checked><span>Kho LẺ</span></label></div></div>
-    <div class="field"><label for="dSoVoi">So sánh với (để thấy lệch, mã chưa đếm)</label><select id="dSoVoi">${opts}<option value="LAN1_CU">Lần 1 (2 file kiểm cũ)</option><option value="">Không so sánh</option></select></div>
+      ${Object.keys(KHO_TEN).map(k => `<label class="tiny"><input type="checkbox" class="dKho" value="${esc(k)}" checked><span>Kho ${esc(KHO_TEN[k])}</span></label>`).join('')}</div></div>
+    <div class="field"><label for="dSoVoi">So sánh với (để thấy lệch, mã chưa đếm)</label><select id="dSoVoi">${opts}<option value="">Không so sánh</option></select></div>
     <label class="tiny"><input type="checkbox" id="dHoc" checked><span>Dùng lại danh sách hộc của đợt so sánh</span></label>
-    <p class="muted small mt-2">Máy tạo 1 file Google Sheets mới cùng thư mục với file Trung tâm. Tài khoản/PIN và danh mục (cả mã vạch đã học) dùng chung.</p>
     <p id="dMsg" class="msg"></p>`;
   const v = await ask('Tạo đợt kiểm mới', body, [{ text: 'Tạo đợt', icon: 'plus', cls: 'primary', value: () => ({ ten: $('dTen').value.trim(),
-      kho: [$('dChan').checked && 'CHAN', $('dLe').checked && 'LE'].filter(Boolean), soVoi: $('dSoVoi').value, copyHoc: $('dHoc').checked }),
+      kho: [...document.querySelectorAll('.dKho:checked')].map(x => x.value), soVoi: $('dSoVoi').value, copyHoc: $('dHoc').checked }),
     check: () => { const m = $('dMsg'); if ($('dTen').value.trim().length < 3) { m.textContent = 'Nhập tên đợt'; return false; }
-      if (!$('dChan').checked && !$('dLe').checked) { m.textContent = 'Chọn ít nhất 1 kho'; return false; } return true; } }, { text: 'Huỷ', cls: 'ghost', value: null }]);
+      if (!document.querySelector('.dKho:checked')) { m.textContent = 'Chọn ít nhất 1 kho'; return false; } return true; } }, { text: 'Huỷ', cls: 'ghost', value: null }]);
   if (!v) return;
-  toast('Đang tạo file cho đợt mới… (khoảng 20–40 giây)', '', null, 40000);
   try {
     const r = await api('taoDot', v, 180000); if (!r.ok) throw new Error(r.error);
     await loadDots();
@@ -1212,7 +1225,7 @@ function bind() {
   $('btnTorch').onclick = () => { if (!SC.track) return; SC.torch = !SC.torch; SC.track.applyConstraints({ advanced: [{ torch: SC.torch }] }).catch(() => {}); };
   $('btnXongHoc').onclick = xongHoc; $('khongLo').onchange = onKhongLo;
   $('btnToiReload').onclick = loadToi; $('btnQlReload').onclick = loadQl; $('btnMoi').onclick = sendMoi;
-  const nd = $('nDvt'); DVT_LIST.forEach(v => { const o = document.createElement('option'); o.value = o.textContent = v; nd.appendChild(o); });
+  applyUserConfig();
 }
 
 // ===================================================================== KHỞI ĐỘNG
@@ -1220,7 +1233,6 @@ function bind() {
   document.querySelectorAll('i[data-i]').forEach(el => { el.outerHTML = ico(el.dataset.i); });
   bind();
   Q.forEach(x => { if (x.state === 'sending') x.state = 'pending'; }); LS.set('queue', Q);
-  if (!apiUrl()) $('apiBox').classList.remove('hidden');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (S.pin && S.user) { enterMain(); revalidate(); }
   else { $('pin').focus(); }
