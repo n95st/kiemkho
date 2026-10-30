@@ -88,20 +88,27 @@ try {
     await xong(p);
   });
 
+  await run('go_lo_co_san_van_sua_duoc_hsd', async () => {
+    const p = await vao('444444');
+    await thuoc(p, 'para', 'TT-0001');
+    await lo(p, 'NEW');
+    await p.type('#lo', 'L-A');                                       // an existing lô typed into "Lô mới" is picked for the counter
+    await p.waitForFunction(() => /HSD 15\/03\/2027/.test(document.getElementById('toast').textContent), null, { timeout: 5000 });
+    ok(await p.inputValue('#hsd') === '15/03/2027', 'HSD không điền sẵn theo lô có sẵn');
+    ok(await p.evaluate(() => !document.getElementById('hsd').readOnly), 'ô HSD bị khoá, người đếm không sửa được theo vỏ hộp');
+    await xong(p);
+  });
+
   await run('cung_lo_khac_hsd_hoi_lai', async () => {
     const p = await vao('444444');
     await thuoc(p, 'para', 'TT-0001');
-    // typing an existing lô into "Lô mới" picks that lô and locks its HSD (no duplicate lô), so a different HSD
-    // goes through the lô's "đổi" link, which unlocks the lô and HSD fields
     await lo(p, 'L-A');
-    await p.click('#lotUnlock');
-    await p.fill('#hsd', '20032027'); await p.fill('#le', '3');
-    await bam(p, 'Cộng vào lô L-A');
-    // the server holds the line back and asks: the line waits in "Của tôi" until the counter confirms the HSD on the box
-    await p.waitForFunction(() => JSON.parse(localStorage.kk_queue || '[]').some(x => x.state === 'need' && x.need === 'HSD_KHAC'), null, { timeout: 15000 });
-    ok(tongLo('TT-0001', 'L-A') === '215', 'dòng HSD khác đã vào dù chưa xác nhận');
-    await p.click('.tabs [data-tab="toi"]');
-    await p.click('#toiList button:has-text("Vẫn lưu HSD này")');
+    await p.fill('#hsd', '20032027', { timeout: 3000 });              // the box says another HSD: typed straight into the field
+    await p.fill('#le', '3');
+    await bam(p, 'Cộng thêm');
+    await p.waitForFunction(() => document.getElementById('mTitle').textContent === 'HSD khác', null, { timeout: 10000 });
+    ok(tongLo('TT-0001', 'L-A') === '215', 'dòng HSD khác đã vào trước khi xác nhận');
+    await hop(p, 'Vỏ hộp ghi đúng 20/03/2027');
     await choGui(p);
     ok(dong('TT-0001', "and hsd = date '2027-03-20'") === 'L-A|20/03/2027|3|A 1|TK04|CONG_THEM|HIEU_LUC', 'dòng HSD 20/03: ' + dong('TT-0001', "and hsd = date '2027-03-20'"));
     await xong(p);

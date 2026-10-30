@@ -510,7 +510,7 @@ function renderAll() {
   $('dWarn').textContent = d.kho && d.kho !== S.kho ? `Thuốc này thuộc kho ${KHO_TEN[d.kho]}. Chỉ nhập nếu thực sự đang nằm ở kho ${KHO_TEN[S.kho]}.` : '';
   renderLots();
   const kl = $('khongLo').checked;
-  $('lo').readOnly = !!S.lotLocked || kl; $('hsd').readOnly = !!S.lotLocked || kl; $('hsdMonth').disabled = kl;
+  $('lo').readOnly = !!S.lotLocked || kl; $('hsd').readOnly = kl;   // HSD stays editable on a known lô: a different HSD on the box asks 'HSD khác' at save $('hsdMonth').disabled = kl;
   $('btnScan2d').disabled = kl; $('btnOcr').disabled = kl;
   $('lotUnlock').classList.toggle('hidden', !S.lotLocked || kl);
   const inp = curInput(), c = checks(inp);
@@ -1200,7 +1200,8 @@ function bind() {
   $('lotUnlock').onclick = () => { S.lotSel = 'NEW'; S.lotLocked = false; renderAll(); $('lo').focus(); };
   $('lo').addEventListener('input', () => {
     if (S.lotSel === 'NEW') { const g = lotGroups().find(x => x.key === loKey($('lo').value) && x.key); if (g && $('lo').value.trim().length >= 3) {
-      S.lotSel = g.key; S.lotLocked = true; $('lo').value = g.lo; $('hsd').value = Object.keys(g.hsd)[0] || ''; toast('Lô này đã có – đã chọn sẵn', 'ok'); } }
+      S.lotSel = g.key; S.lotLocked = true; $('lo').value = g.lo; $('hsd').value = Object.keys(g.hsd)[0] || ''; flash('hsd');
+      toast('Lô ' + g.lo + ' đã có' + ($('hsd').value ? ', HSD ' + $('hsd').value + ' – soát với vỏ hộp' : ''), 'ok'); } }
     renderAll();
   });
   bindHsd('hsd', () => $('hsdMonth').checked); bindHsd('nHsd', () => false);
