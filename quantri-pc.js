@@ -360,13 +360,69 @@ async function nhapSoSanh(f) {
   await ketQua(nhieuKho.map(k => `<p>Kho ${esc(k.kho)}: ${r.theoKho[k.kho]} dòng</p>`).join(''));
 }
 
+// ===================================================================== Đợt kiểm
+const DT = { list: [] };
+const KHO_ST_TEN = { DANG_KIEM: 'Đang kiểm', DA_CHOT: 'Đã chốt' };
+const nutO = (tr, html) => { tr.lastChild.innerHTML = html; };
+async function veDot() {
+  $('bang').innerHTML = `<div class="cong-cu"><button type="button" id="btnTaoDot" class="btn primary">Tạo đợt</button></div><div id="dsDot"></div><div id="phanKhoDot" class="muc-phu"></div>`;
+  $('btnTaoDot').onclick = () => taoDot().catch(baoLoi);
+  $('dsDot').onclick = $('phanKhoDot').onclick = e => {
+    const b = e.target.closest('[data-dotst],[data-dotxls],[data-khost]');
+    if (!b) return;
+    if (b.dataset.dotxls) return xuatExcel(b.dataset.dotxls).catch(baoLoi);
+    if (b.dataset.dotst) return doiTrangThai('datTrangThaiDot', { id: b.dataset.dotid, st: b.dataset.dotst }, b.textContent + ' ' + b.dataset.dotid + '?', b.textContent);
+    doiTrangThai('datTrangThaiKho', { kho: b.dataset.kho, trangThai: b.dataset.khost }, b.textContent + ' ' + b.dataset.kho + '?', b.textContent);
+  };
+  let r;
+  try { r = await goi('dsDot'); } catch (e) { r = e; }
+  if (mucMo !== 'dot') return;
+  if (r instanceof Error) return void ($('dsDot').innerHTML = `<p class="msg">${esc(r.message)}</p>`);
+  DT.list = r.list;
+  veBang($('dsDot'), ['Mã đợt', 'Tên', 'Kho', 'Ngày tạo', 'So với đợt', 'Người tạo', 'Trạng thái', 'Ghi chú', ''],
+    DT.list.map(d => [d.id, d.ten, d.kho.join(', '), d.ngay, d.soVoi, d.nguoi, d.st === 'MO' ? 'Đang mở' : 'Đã đóng', d.ghi, '']),
+    () => true, () => {}, DT.list.findIndex(d => d.id === S.dot));
+  $('dsDot').querySelectorAll('tbody tr').forEach(tr => {
+    const d = DT.list[tr.dataset.i];
+    nutO(tr, `<div class="flex gap-2"><button type="button" class="btn small" data-dotid="${esc(d.id)}" data-dotst="${d.st === 'MO' ? 'DONG' : 'MO'}">${d.st === 'MO' ? 'Đóng đợt' : 'Mở lại đợt'}</button>
+      <button type="button" class="btn small" data-dotxls="${esc(d.id)}">Xuất Excel đợt</button></div>`);
+  });
+  if (!S.dotInfo) return void ($('phanKhoDot').innerHTML = chuaCoDot());
+  $('phanKhoDot').innerHTML = '<div id="dsKhoDot"></div>';
+  const ks = S.dotInfo.kho, tt = S.dotInfo.trangThai || {};
+  veBang($('dsKhoDot'), ['Kho', 'Trạng thái', ''], ks.map(k => [k, KHO_ST_TEN[tt[k]] || KHO_ST_TEN.DANG_KIEM, '']), () => true, () => {}, -1);
+  $('dsKhoDot').querySelectorAll('tbody tr').forEach(tr => {
+    const k = ks[tr.dataset.i], chot = tt[k] === 'DA_CHOT';
+    nutO(tr, `<button type="button" class="btn small ghi-dot" data-kho="${esc(k)}" data-khost="${chot ? 'DANG_KIEM' : 'DA_CHOT'}">${chot ? 'Mở lại kho' : 'Chốt kho'}</button>`);
+  });
+}
+/** Confirms, sends the đợt / kho state change, then reloads the đợt (S.dotInfo) and redraws. */
+async function doiTrangThai(action, data, cauHoi, nut) {
+  if (!await hoi(cauHoi, '', [{ text: nut, value: true, cls: 'danger' }, { text: 'Huỷ', value: false, cls: 'ghost' }])) return;
+  try { await goi(action, data); } catch (e) { return baoLoi(e); }
+  await chonDot(S.dot);
+}
+async function taoDot() {
+  const khos = (await goi('dsKho')).list.filter(k => k.hoatDong);
+  moKhung('Tạo đợt', oNhap('oTen', 'Tên', '')
+    + `<div class="field"><label>Kho</label><div class="flex flex-wrap gap-4">${khos.map(k => `<label class="tiny"><input type="checkbox" class="oKhoDot" value="${esc(k.ma)}" checked><span>${esc(k.tenNgan)}</span></label>`).join('')}</div></div>`
+    + oChon('oSoVoi', 'So với đợt', [['', '']].concat(S.dots.slice().reverse().map(d => [d.id, d.id + ' · ' + d.ten])), S.dot)
+    + oDanh('oHoc', 'Chép danh sách hộc', true),
+    async () => {
+      const r = await goi('taoDot', { ten: $('oTen').value.trim(), kho: [...document.querySelectorAll('.oKhoDot:checked')].map(x => x.value),
+        soVoi: $('oSoVoi').value, copyHoc: $('oHoc').checked }, 180000);
+      await chonDot(S.dot);                                        // the new đợt joins the đợt picker; the current one stays
+      if (mucMo === 'dot') $('dsDot').querySelectorAll('tbody tr').forEach(tr => tr.classList.toggle('chon', DT.list[tr.dataset.i].id === r.dot.id));
+    });
+}
+
 // ===================================================================== menu: [key, label, draw()]
 const MUC = [
   ['taiKhoan', 'Tài khoản', veTaiKhoan],
   ['danhMuc', 'Danh mục thuốc', veDanhMuc],
   ['kho', 'Kho và hộc', veKho],
   ['soSanh', 'Số liệu so sánh', veSoSanh],
-  ['dot', 'Đợt kiểm', async () => {}],
+  ['dot', 'Đợt kiểm', veDot],
 ];
 
 // ===================================================================== khởi động

@@ -563,6 +563,93 @@ try {
     await p.context().close();
   });
 
+  // ------------------------------------------------------------ đợt kiểm
+  await run('dot_bang', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Đợt kiểm');
+    const cot = (await p.locator('#dsDot thead th').allTextContents()).map(x => x.trim());
+    for (const c of ['Mã đợt', 'Tên', 'Kho', 'Ngày tạo', 'So với đợt', 'Người tạo', 'Trạng thái', 'Ghi chú']) ok(cot.includes(c), 'thiếu cột ' + c + ': ' + cot);
+    const ma = await p.$$eval('#dsDot tbody tr', rs => rs.map(r => r.cells[0].textContent));
+    ok(ma.includes('DOT01') && ma.includes('DOT02'), 'bảng đợt: ' + ma);
+    ok(/Đã đóng/.test(await p.textContent('#dsDot tbody tr:has-text("DOT02")')), 'DOT02 không hiện Đã đóng');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('dot_tao', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Đợt kiểm');
+    await p.click('#bang button:has-text("Tạo đợt")');
+    await p.fill('#oTen', 'Đợt PC thử');
+    for (const o of await p.locator('.oKhoDot').all()) await o.uncheck();
+    await p.check('.oKhoDot[value="CHAN"]');
+    await p.selectOption('#oSoVoi', 'DOT01');
+    await p.check('#oHoc');
+    await p.click('#khung button:has-text("Lưu")');
+    await p.waitForFunction(() => /Đợt PC thử/.test(document.getElementById('dsDot').textContent), null, { timeout: 15000 });
+    ok(sql("select array_to_string(kho, ',') || '|' || so_voi || '|' || trang_thai from kk.dot where ten = 'Đợt PC thử'") === 'CHAN|Đợt thử|MO', 'kk.dot: ' + sql("select array_to_string(kho, ',') || '|' || so_voi from kk.dot where ten = 'Đợt PC thử'"));
+    ok(sql("select count(*) from kk.hoc h join kk.dot d on d.id = h.dot_id where d.ten = 'Đợt PC thử'") === sql("select count(*) from kk.hoc where dot_id = 'DOT01' and kho = 'CHAN' and not tap"), 'chưa chép danh sách hộc');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('kho_chot_mo', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await p.selectOption('#dot', 'DOT01');
+    await moMuc(p, 'Đợt kiểm');
+    await p.click('#dsKhoDot tbody tr:has-text("CHAN") button:has-text("Chốt kho")');
+    await p.click('#hop button:has-text("Chốt kho")');
+    await p.waitForSelector('#dsKhoDot tbody tr:has-text("CHAN") button:has-text("Mở lại kho")', { timeout: 10000 });
+    ok(sql("select trang_thai from kk.dot_kho where dot_id = 'DOT01' and kho = 'CHAN'") === 'DA_CHOT', 'kho CHAN chưa chốt');
+    await p.click('#dsKhoDot tbody tr:has-text("CHAN") button:has-text("Mở lại kho")');
+    await p.click('#hop button:has-text("Mở lại kho")');
+    await p.waitForSelector('#dsKhoDot tbody tr:has-text("CHAN") button:has-text("Chốt kho")', { timeout: 10000 });
+    ok(sql("select trang_thai from kk.dot_kho where dot_id = 'DOT01' and kho = 'CHAN'") === 'DANG_KIEM', 'kho CHAN chưa mở lại');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('dot_dong_mo', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await p.selectOption('#dot', 'DOT01');
+    await moMuc(p, 'Đợt kiểm');
+    await p.click('#dsDot tbody tr:has-text("DOT01") button:has-text("Đóng đợt")');
+    await p.click('#hop button:has-text("Đóng đợt")');
+    await p.waitForSelector('#dsDot tbody tr:has-text("DOT01") button:has-text("Mở lại đợt")', { timeout: 10000 });
+    ok(sql("select trang_thai from kk.dot where id = 'DOT01'") === 'DONG', 'DOT01 chưa đóng');
+    ok(await p.locator('#dsKhoDot button:has-text("Chốt kho"):visible').count() === 0, 'đợt đã đóng mà còn nút Chốt kho');
+    await p.click('#dsDot tbody tr:has-text("DOT01") button:has-text("Mở lại đợt")');
+    await p.click('#hop button:has-text("Mở lại đợt")');
+    await p.waitForSelector('#dsDot tbody tr:has-text("DOT01") button:has-text("Đóng đợt")', { timeout: 10000 });
+    ok(sql("select trang_thai from kk.dot where id = 'DOT01'") === 'MO', 'DOT01 chưa mở lại');
+    ok(await p.locator('#dsKhoDot button:has-text("Chốt kho"):visible').count() > 0, 'mở lại đợt mà không có nút Chốt kho');
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('dot_xuat_excel', async () => {
+    const p = await newPage();
+    await vao(p, '111111');
+    await moMuc(p, 'Đợt kiểm');
+    const { ten } = await taiVe(p, '#dsDot tbody tr:has-text("DOT01") button:has-text("Xuất Excel đợt")', 'dot01.xlsx');
+    ok(ten === 'KIEM-KHO-Đợt thử.xlsx', 'tên file: ' + ten);
+    sachLoi(p);
+    await p.context().close();
+  });
+
+  await run('dot_mac_dinh_khi_khong_co_dot_mo', async () => {
+    sql("update kk.dot set trang_thai = 'DONG'");
+    const p = await newPage();
+    await vao(p, '111111');
+    ok(await p.inputValue('#dot') === sql('select max(id) from kk.dot'), 'đợt mặc định: ' + await p.inputValue('#dot'));
+    sachLoi(p);
+    await p.context().close();
+  });
+
   // ------------------------------------------------------------ không còn đợt nào (chạy cuối vì xoá mọi đợt)
   await run('hoc_chua_co_dot', async () => {
     sql('delete from kk.so_sanh; delete from kk.dong; delete from kk.thuoc_moi; delete from kk.dot_kho; delete from kk.hoc; delete from kk.dot');
@@ -573,6 +660,8 @@ try {
     ok(await p.locator('#dsKho tbody tr').count() >= 2, 'bảng Kho không hiện');
     await p.click('#menu button:has-text("Số liệu so sánh")');
     await p.waitForFunction(() => /Chưa có đợt kiểm/.test(document.getElementById('bang').textContent), null, { timeout: 10000 });
+    await p.click('#menu button:has-text("Đợt kiểm")');
+    await p.waitForSelector('#bang button:has-text("Tạo đợt")', { state: 'visible', timeout: 10000 });
     sachLoi(p);
     await p.context().close();
   });
