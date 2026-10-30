@@ -826,7 +826,7 @@ async function loadQl() {
   try {
     const h = await api('dsHoc', { kho: S.kho });
     if (h.ok) $('qlHoc').innerHTML = `<details${h.chua || h.dang ? ' open' : ''}><summary>${ico('pin', 'text-zinc-500')} Hộc kho ${esc(KHO_TEN[S.kho])}: ${h.xong} xong · ${h.dang} đang · ${h.chua} chưa nhận</summary><div class="inner">
-      ${h.list.map(x => `<div class="qitem flex items-center justify-between gap-2"><span><b>${esc(x.hoc)}</b> <span class="muted small">${esc((x.nguoiDem || []).join(', ') || x.nguoi || '')}${x.soDong ? ' · ' + x.soDong + ' dòng, ' + x.soMa + ' mã' : ''}</span></span><span class="st ${x.st === 'XONG' ? 'HIEU_LUC' : x.st === 'DANG_DEM' ? 'CHO_DUYET' : 'THAY_THE'}">${HOC_ST_TEN[x.st]}</span></div>`).join('') || '<p class="muted small py-2">Chưa có hộc nào.' + (isIT() ? ' Thêm ở Cấu hình → Hộc.' : '') + '</p>'}
+      ${h.list.map(x => `<div class="qitem flex items-center justify-between gap-2"><span><b>${esc(x.hoc)}</b> <span class="muted small">${esc((x.nguoiDem || []).join(', ') || x.nguoi || '')}${x.soDong ? ' · ' + x.soDong + ' dòng, ' + x.soMa + ' mã' : ''}</span></span><span class="st ${x.st === 'XONG' ? 'HIEU_LUC' : x.st === 'DANG_DEM' ? 'CHO_DUYET' : 'THAY_THE'}">${HOC_ST_TEN[x.st]}</span></div>`).join('') || '<p class="muted small py-2">Chưa có hộc nào.</p>'}
     </div></details>`;
   } catch (e) {}
   // chờ duyệt

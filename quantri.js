@@ -50,17 +50,24 @@ function qtTaiSheetJS() {                                   // load SheetJS only
   });
   return qtXlsxP;
 }
-/** Đọc sheet đầu của file Excel, bỏ dòng tiêu đề. Ô ngày (và số serial ở cột cotNgay) đổi thành chữ DD/MM/YYYY, ô khác thành chữ. */
+/** Đổi một ô Excel thành chữ. Số ở cột ngày (cotNgay) là số serial: đổi bằng phép tính thuần, không qua Date nên không lệch múi giờ. */
+globalThis.oExcelSangChu = (c, i, cotNgay, date1904) => {
+  if (typeof c === 'number' && i === cotNgay) {
+    const p = XLSX.SSF.parse_date_code(c, { date1904: !!date1904 }), z = n => ('0' + n).slice(-2);
+    return p ? z(p.d) + '/' + z(p.m) + '/' + p.y : String(c);
+  }
+  return String(c).trim();
+};
+/** Đọc sheet đầu của bộ nhớ file Excel, bỏ dòng tiêu đề; mọi ô thành chữ. */
+globalThis.oExcelDoc = (buf, cotNgay) => {
+  const wb = XLSX.read(buf, { type: 'array' }), d1904 = !!(wb.Workbook && wb.Workbook.WBProps && wb.Workbook.WBProps.date1904);
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
+  return rows.slice(1).map(r => r.map((c, i) => oExcelSangChu(c, i, cotNgay, d1904)));
+};
+/** Đọc sheet đầu của file Excel, bỏ dòng tiêu đề. Số ở cột cotNgay đổi thành chữ DD/MM/YYYY, ô khác thành chữ. */
 async function docFileExcel(file, cotNgay) {
   await qtTaiSheetJS();
-  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
-  const ngay = d => pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
-  return rows.slice(1).map(r => r.map((c, i) => {
-    if (c instanceof Date) return ngay(c);
-    if (typeof c === 'number' && i === cotNgay) { const p = XLSX.SSF.parse_date_code(c); return p ? pad2(p.d) + '/' + pad2(p.m) + '/' + p.y : String(c); }
-    return String(c).trim();
-  }));
+  return oExcelDoc(await file.arrayBuffer(), cotNgay);
 }
 /** Như docFileExcel nhưng bỏ dòng trống và nhớ số dòng thật trong file (để báo lỗi đúng dòng). */
 async function qtDocExcel(file, cotNgay) {

@@ -1,6 +1,6 @@
 /* Service worker: mở app khi mạng yếu. Giao diện lấy mạng trước (để luôn có bản mới), thư viện quét lấy bộ nhớ trước. */
-const VER = 'kk-4.1.0';
-const SHELL = ['./', 'index.html', 'app.css?v=6', 'app.js?v=6', 'ocrparse.js?v=6', 'config.js?v=6', 'canxem.js?v=6', 'quantri.js?v=6', 'manifest.webmanifest', 'icon.svg', 'icon-192.png',
+const VER = 'kk-4.1.1';
+const SHELL = ['./', 'index.html', 'app.css?v=7', 'app.js?v=7', 'ocrparse.js?v=7', 'config.js?v=7', 'canxem.js?v=7', 'quantri.js?v=7', 'manifest.webmanifest', 'icon.svg', 'icon-192.png',
   'vendor/zxing/zxing-reader.js', 'vendor/zxing/zxing_reader.wasm', 'huong-dan.html', 'vendor/qrcode/qrcode.js'];
 
 self.addEventListener('install', e => {
