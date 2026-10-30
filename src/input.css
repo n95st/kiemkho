@@ -8,10 +8,11 @@
 @layer base {
   html { -webkit-tap-highlight-color: transparent; }
   body { @apply bg-zinc-50 font-sans text-zinc-950 antialiased; padding-bottom: env(safe-area-inset-bottom); }
-  input:not([type=checkbox]):not([type=file]), select {
+  input:not([type=checkbox]):not([type=file]), select, textarea {
     @apply h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-base text-zinc-950 shadow-sm transition
            placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10;
   }
+  textarea { @apply h-auto py-2; }
   input[readonly] { @apply border-zinc-200 bg-zinc-100 text-zinc-700 shadow-none; }
   input[type=checkbox] { @apply h-4 w-4 rounded border-zinc-300 accent-zinc-900; }
   select { @apply pr-8; }

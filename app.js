@@ -1,6 +1,6 @@
 /* Kiểm kho iSOFH – web app (GitHub Pages) · dữ liệu lưu ở Supabase */
 'use strict';
-const APP_VER = '4.0.0';
+const APP_VER = '4.1.0';
 const $ = id => document.getElementById(id);
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('kk_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -808,6 +808,7 @@ async function sendMoi() {
 const LOAI_TEN = { HSD_KHAC: 'Cùng lô nhưng 2 HSD', CUNG_HOC_KHAC_NGUOI: 'Cùng hộc – 2 người cùng đếm (dễ trùng)', LO_GAN_GIONG: 'Số lô gần giống nhau (có thể gõ sai)',
   QC_KHAC: 'Quy cách khác danh mục', LO_NGHI: 'Số lô đáng ngờ', SAI_KHO: 'Thuốc thuộc kho khác', NHIEU_HOC: 'Cùng lô ở nhiều hộc (để xem, thường là đúng)' };
 async function loadQl() {
+  if (!isIT()) $('qlCfg').innerHTML = ''; else if (!$('qlCfg').firstChild) $('qlCfg').innerHTML = qtMenu();
   if (isIT()) loadDots();
   if (!dotOk()) { ['qlProg', 'qlHoc', 'qlDuyet', 'qlCanXem', 'qlKho'].forEach(id => $(id).innerHTML = ''); $('qlTitle').textContent = 'Quản lý'; return; }
   $('qlTitle').textContent = 'Quản lý · ' + S.dotInfo.ten + ' · Kho ' + KHO_TEN[S.kho];
@@ -825,7 +826,7 @@ async function loadQl() {
   try {
     const h = await api('dsHoc', { kho: S.kho });
     if (h.ok) $('qlHoc').innerHTML = `<details${h.chua || h.dang ? ' open' : ''}><summary>${ico('pin', 'text-zinc-500')} Hộc kho ${esc(KHO_TEN[S.kho])}: ${h.xong} xong · ${h.dang} đang · ${h.chua} chưa nhận</summary><div class="inner">
-      ${h.list.map(x => `<div class="qitem flex items-center justify-between gap-2"><span><b>${esc(x.hoc)}</b> <span class="muted small">${esc((x.nguoiDem || []).join(', ') || x.nguoi || '')}${x.soDong ? ' · ' + x.soDong + ' dòng, ' + x.soMa + ' mã' : ''}</span></span><span class="st ${x.st === 'XONG' ? 'HIEU_LUC' : x.st === 'DANG_DEM' ? 'CHO_DUYET' : 'THAY_THE'}">${HOC_ST_TEN[x.st]}</span></div>`).join('') || '<p class="muted small py-2">Chưa có hộc nào. Có thể khai trước danh sách hộc ở sheet HOC (Kho, Hộc, CHUA_NHAN).</p>'}
+      ${h.list.map(x => `<div class="qitem flex items-center justify-between gap-2"><span><b>${esc(x.hoc)}</b> <span class="muted small">${esc((x.nguoiDem || []).join(', ') || x.nguoi || '')}${x.soDong ? ' · ' + x.soDong + ' dòng, ' + x.soMa + ' mã' : ''}</span></span><span class="st ${x.st === 'XONG' ? 'HIEU_LUC' : x.st === 'DANG_DEM' ? 'CHO_DUYET' : 'THAY_THE'}">${HOC_ST_TEN[x.st]}</span></div>`).join('') || '<p class="muted small py-2">Chưa có hộc nào.' + (isIT() ? ' Thêm ở Cấu hình → Hộc.' : '') + '</p>'}
     </div></details>`;
   } catch (e) {}
   // chờ duyệt
